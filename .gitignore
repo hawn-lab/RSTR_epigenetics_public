@@ -37,3 +37,25 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# MAC
+*.DS_Store
+
+# Raw data
+ATACseq/data_ATACseq_raw/bam/*
+ATACseq/data_ATACseq_raw/peaks/*
+data_refs/*RSTR_Hawn_metadata.csv
+data_refs/kinship_Hawn_all.csv
+lipidyzer/*
+lipoprotein/data_raw/*
+Methyl/data_Methyl_raw/*
+RNAseq/*
+
+# Clean data
+ATACseq/data_ATACseq_clean/*
+Methyl/data_Methyl_clean/*
+
+
+# Archives
+*/archive/*
+publication/temp/*
