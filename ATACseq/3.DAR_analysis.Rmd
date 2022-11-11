@@ -1,0 +1,279 @@
+---
+title: "Differentially accessible regions (DAR)"
+subtitle: "RSTR vs. LTBI, nucleosome free data"
+author: "Kim Dill-McFarland, kadm@uw.edu"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+# Setup
+Load packages
+
+```{r message=FALSE, warning=FALSE}
+# Data manipulation and figures
+library(tidyverse)
+library(ggman)
+library(kimma)
+
+# Peak annotation
+library(ChIPseeker)
+library(AnnotationDbi)
+# Genome databases
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(org.Hs.eg.db)
+library(EnsDb.Hsapiens.v86)
+
+#Print pretty tables to Rmd
+library(knitr)
+library(kableExtra)
+  options(knitr.kable.NA = '')
+```
+
+Set seed
+
+```{r}
+set.seed(589)
+```
+
+# Load data
+
+Significant peaks were determined in [2.ATACseq_model_selection.html](2.ATACseq_model_selection.html). The best fit model is
+
+`~ Sample_Group + KCHCA_AGE_YR_CURRENT + M0_KCVSEX + (1|Sample), varlist=kin`
+
+```{r echo=FALSE, message=FALSE}
+load("data_ATACseq_clean/ATACseq_data.RData")
+load("data_ATACseq_clean/consensus_peaks_GRanges.RData")
+#Read in model results
+attach("results/model_selection/kinship_final_model.RData")
+model.final <- kinship_final$lmerel %>% 
+  dplyr::rename(peak=gene)
+```
+
+# Differential accessibility
+
+As described in model selection, the following peaks are significant for RSTR vs LTBI. Final models did not include XY peaks for consistency with methylation and RNA-seq analyses.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+summarise_kmFit(kinship_final$lmerel, fdr.cutoff = c(0.05, 0.2, 0.5))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+peak.signif <- model.final %>% 
+  dplyr::filter(variable == "Sample_Group" & FDR <= 0.5)
+
+model.final %>% 
+  dplyr::filter(peak %in% peak.signif$peak) %>% 
+  dplyr::select(peak, variable, estimate, FDR) %>% 
+  kable(align=c("l","l","c","c","c")) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>% 
+  collapse_rows(1, valign="top")
+```
+
+## Annotate DAR
+
+Annotate peaks based to the nearest gene in the [human genome, version hg38](https://bioconductor.org/packages/release/data/annotation/html/TxDb.Hsapiens.UCSC.hg38.knownGene.html).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+peaks.annot <- annotatePeak(unique.peaks.nonblack.M,
+                            TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+                            verbose=FALSE)
+```
+
+Extract annotation information for peaks and merge with model results. Calculate average normalized voom counts in RSTR/LTBI groups and also merge with results.
+
+```{r echo=FALSE, message=FALSE}
+#Extract anno info
+peaks.annot.df <- as.data.frame(peaks.annot@anno) %>% 
+  dplyr::select(seqnames:end, annotation, geneId, distanceToTSS) %>% 
+  #add peak name similar to signif peak df
+  mutate(peak=paste("ID", seqnames, start, end, sep = "_"))
+
+#Get gene names for entrez IDs
+genes <- AnnotationDbi::select(EnsDb.Hsapiens.v86, 
+                               keys=peaks.annot.df$geneId,
+                               columns=c("GENENAME"), keytype="ENTREZID") %>% 
+  mutate(ENTREZID=as.character(ENTREZID)) %>% 
+  #collapse gene names
+  group_by(ENTREZID) %>% 
+  dplyr::summarise(hgnc_symbol = paste(unique(GENENAME), collapse="/")) %>% 
+  ungroup()
+```
+
+```{r aves, echo=FALSE, message=FALSE}
+#Ave all peaks data
+voom.count.ave <- voomQW.Nfree.abund.norm.kin %>%
+  rownames_to_column("peak") %>% 
+  pivot_longer(-peak, names_to = "RS_SUB_ACCESSION_NO") %>% 
+  left_join(dplyr::select(meta.kin, Sample_Group, RS_SUB_ACCESSION_NO),
+            by="RS_SUB_ACCESSION_NO") %>% 
+  group_by(Sample_Group, peak) %>% 
+  dplyr::summarise(mean=mean(value, na.rm=TRUE)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = Sample_Group, values_from = mean) %>% 
+  dplyr::rename(RSTR.voom.mean=RSTR, LTBI.voom.mean=LTBI)
+```
+
+```{r echo=FALSE, message=FALSE}
+#merge data sets
+DAR.results <-  model.final %>% 
+  #Variable of interest
+  dplyr::filter(variable == "Sample_Group") %>% 
+  dplyr::select(peak, FDR) %>% 
+
+  #Add annotations
+  left_join(peaks.annot.df, by = "peak") %>% 
+  #Add gene name
+  left_join(genes, by=c("geneId" = "ENTREZID")) %>% 
+  #Add group aves
+  left_join(voom.count.ave, by = "peak") %>% 
+
+  #Add simplified annotation group to match methylation
+  mutate(annotation.group = case_when(grepl("Intron", annotation) ~ "intron",
+                    grepl("Exon", annotation) ~ "exon",
+                    annotation == "5' UTR" ~ "5'UTR",
+                    annotation == "3' UTR" ~ "3'UTR",
+                    grepl("Promoter", annotation) & 
+                      abs(distanceToTSS) <= 1500  ~ "TSS1500",
+                    grepl("Promoter", annotation) & 
+                      abs(distanceToTSS) > 1500  ~ "upstream(<3kb)",
+                    grepl("Downstream", annotation) ~ "downstream(<3kb)",
+                    annotation == "Distal Intergenic" ~ "IGR",
+                    is.na(annotation) ~ "IGR")) %>% 
+  mutate(annotation.group = ifelse(is.na(annotation.group), 
+                                   annotation, annotation.group)) %>% 
+  #chr to numeric
+    mutate(CHR = gsub("chr","", seqnames)) %>% 
+  #Reorder
+  dplyr::select(peak, CHR, start, end, annotation, annotation.group,
+                hgnc_symbol, distanceToTSS, LTBI.voom.mean, RSTR.voom.mean,
+                FDR) %>% 
+  dplyr::rename(peak_start=start, peak_end=end, 
+                DAR_genes=hgnc_symbol, DAR_FDR=FDR)
+```
+
+#### Save DAR results
+
+```{r}
+write_csv(DAR.results, "results/RSTR.DAR.results.csv")
+```
+
+## Visualize DAR
+
+```{r dmr.viz, warning=FALSE, echo=FALSE}
+DAR.man.plot <- ggman(DAR.results, snp="DAR_genes",
+                      bp="peak_start", 
+                      chrom="CHR", pval="DAR_FDR",
+        pointSize=1, logTransform=TRUE, ymax=1.1, ymin=0,
+        sigLine=NA,
+        relative.positions=TRUE) +
+  theme_classic() +
+  labs(y = "-log10( FDR )") + 
+  # geom_hline(yintercept = -log10(0.05)) +
+  # geom_text(aes(1.1, -log10(0.05), label = "FDR = 0.05", 
+  #               vjust = -1, hjust=0), color = "black") +
+  geom_hline(yintercept = -log10(0.2), lty=2) +
+  geom_text(aes(1.1, -log10(0.2), label = "FDR = 0.2", 
+                vjust = -1, hjust=0), color = "black")
+
+DAR.man.plot
+```
+
+Save plot.
+
+```{r message=FALSE}
+# ggsave("figs/DAR_Manhattan_plot.pdf", DAR.man.plot, 
+#        width = 13, height=4)
+ggsave("figs/DAR_Manhattan_plot.png", DAR.man.plot, 
+       width = 13, height=4)
+```
+
+#### Individual DAR plots
+
+Save DAR plots in `figs/DAR_plots/`. Plot all regions FDR < 0.5
+
+```{r echo=FALSE, message=FALSE}
+dir.create("figs/DAR_plots/", showWarnings = FALSE,
+           recursive = TRUE)
+#Filter voom count data to signif peaks
+signif.peak <- DAR.results %>% 
+  dplyr::filter(DAR_FDR <= 0.5) %>% 
+  distinct(peak, DAR_FDR, DAR_genes, annotation, annotation.group)
+
+peaks.to.plot <- voomQW.Nfree.abund.norm.kin %>% 
+  rownames_to_column("peak") %>% 
+  dplyr::filter(peak %in% signif.peak$peak) %>% 
+  pivot_longer(-peak, names_to = "RS_SUB_ACCESSION_NO", 
+               values_to = "voom.count") %>% 
+  left_join(signif.peak) %>% 
+  left_join(dplyr::select(meta.kin, RS_SUB_ACCESSION_NO,
+                          Sample_Group))
+```
+
+```{r echo=FALSE, eval=FALSE}
+for(peak.name in unique(peaks.to.plot$peak)){
+  #Extract peak data
+  temp <- peaks.to.plot %>% 
+    dplyr::filter(peak == peak.name)
+  
+  #Create dir for peak type
+  if(unique(temp$annotation.group) %in% c("5'UTR", "3'UTR")){
+    result.dir <- "figs/DAR_plots/UTR"
+  } else if(unique(temp$annotation.group) == "upstream(<3kb)"){
+    result.dir <- "figs/DAR_plots/upstream"
+  } else if(unique(temp$annotation.group) == "downstream(<3kb)"){
+    result.dir <- "figs/DAR_plots/downstream"
+  } else{
+    result.dir <- paste("figs/DAR_plots/",
+                        unique(temp$annotation.group), sep="")
+  }
+ 
+  dir.create(result.dir, showWarnings = FALSE)
+  
+  #Create filename and plot title
+  if(any(!is.na(temp$DAR_genes))){
+    filename <- paste(result.dir, "/", 
+                    unique(temp$DAR_genes), "_",
+                    "peak", unique(temp$peak), ".pdf", sep="")
+    plot.title <- paste(unique(temp$DAR_genes), "\n",
+                         unique(temp$annotation), " \n",
+                         unique(temp$peak), "\n FDR = ",
+                         round(unique(temp$DAR_FDR), digits=6),
+                        sep="")
+  } else{
+    filename <- paste(result.dir, "/", 
+                    "no.gene_peak",
+                    unique(temp$peak), ".pdf", sep="")
+     plot.title <- paste("No gene\n",
+                         unique(temp$annotation), " \n",
+                         unique(temp$peak), "\n FDR = ",
+                         round(unique(temp$DAR_FDR), digits=6),
+                        sep="")
+  }
+
+  # Boxplot
+  plot <- temp %>% 
+    ggplot(aes(x=Sample_Group, y=voom.count, color=Sample_Group)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(height=0, width=0.2) +
+    theme_classic() +
+    theme(legend.position = "none",
+          text = element_text(size=12)) +
+    labs(title=plot.title, x="", y="normalized log2 counts in peak")
+
+  ggsave(filename, plot, width=4, height=5)
+}
+```
+
+# R session
+
+```{r}
+sessionInfo()
+```
+
+***
