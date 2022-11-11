@@ -1,0 +1,405 @@
+---
+title: "Selecting the best fit model for methylation analyses"
+subtitle: "RSTR vs. LTBI, full dataset"
+author: "Kim Dill-McFarland, kadm@uw.edu"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+# Setup
+Load packages
+
+```{r message=FALSE, warning=FALSE}
+##Addtl tidy function
+library(plyr)
+# Data manipulation and figures
+library(tidyverse)
+  ## Multi-panel figures
+  library(patchwork)
+  ## Add P-values to ggplots
+  library(ggpubr)
+  ## kimma figures
+  library(BIGpicture)
+
+# Linear regression
+library(limma)
+library(kimma)
+
+#Parallel computing
+library(foreach)
+library(doParallel)
+
+#Print pretty tables to Rmd
+library(knitr)
+library(kableExtra)
+  options(knitr.kable.NA = '')
+```
+
+Set seed
+
+```{r}
+set.seed(589)
+```
+
+# Load data
+Load data from ["EPIC array data clean-up"](./data_cleaning.html).
+
+```{r data}
+#Calculate log2 ratios (M-values) from Beta
+RSTR.M <- read_csv("data_Methyl_clean/RSTR_clean_M.csv.gz") %>% 
+  column_to_rownames("probeID")
+
+#Probe features
+probes <- read_csv("data_Methyl_clean/RSTR_probe_features.csv.gz")
+
+#Complete metadata for methylation samples
+meta <- read_csv("../data_refs/2020.11.20RSTR_Hawn_metadata.csv", na=c("",NA)) %>% 
+  #Keep only methylation samples
+  filter(methylation == "PASS") %>% 
+  #Make family and name variables characters
+  mutate_at(c("family.3","family.2","family.1","Sample_Name"),
+            ~as.character(.)) %>% 
+  arrange(as.numeric(Sample_Name))
+
+#Kinship matrix
+kin <- read_csv("../data_refs/kinship_Hawn_all.csv") %>% 
+  #Keep methyl samples
+  pivot_longer(-rowname) %>% 
+  filter(rowname %in% meta$FULLIDNO & name %in% meta$FULLIDNO) %>% 
+  pivot_wider() %>% 
+  column_to_rownames()
+```
+
+Verify all samples are in the same order.
+
+```{r}
+identical(meta$Sample_Name, colnames(RSTR.M))
+```
+
+# Selecting metadata of interest
+## Genetic relatedness
+
+A number of study participants are blood relatives. Thus, differential methylation models may need to be corrected for relatedness. We explore 2 methods for this including 1) blocking samples by family groups or 2) including genetic kinship values (calculated from SNPs) as a random effect.
+
+### Family blocks
+
+Third degree relatedness includes great-grandparents, great grandchildren, great uncles/aunts, and first cousins. It corresponds to ~12.5% genetic identity.
+
+```{r echo=FALSE, message=FALSE}
+meta %>% 
+  group_by(family.3) %>% 
+  tally() %>% 
+  #keep families with >1 person (e.g. blocks)
+  filter(n > 1) %>% 
+  #count total families of each size
+  ungroup() %>% 
+  group_by(n) %>% 
+  tally() %>% 
+  arrange(dplyr::desc(n)) %>% 
+  
+  kable(align="l", caption = "3rd degree families with 2+ members",
+        col.names = c("Family size", "Total families")) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```  
+
+Second degree relatedness includes grandparents, grandchildren, uncles/aunts, nieces/nephews, and half-siblings. It corresponds to ~25% genetic identity.
+
+```{r echo=FALSE, message=FALSE}
+meta %>% 
+  group_by(family.2) %>% 
+  tally() %>% 
+  #keep families with >1 person (e.g. blocks)
+  filter(n > 1) %>% 
+  #count total families of each size
+  ungroup() %>% 
+  group_by(n) %>% 
+  tally() %>% 
+  arrange(dplyr::desc(n)) %>% 
+  
+  kable(align="l", caption = "2nd degree families with 2+ members",
+        col.names = c("Family size", "Total families")) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```  
+
+First degree relatedness includes parents, children, and siblings. It corresponds to ~50% genetic identity. These groups are the same as 1st degree in these data *except* in the case of half-siblings.
+
+```{r echo=FALSE, message=FALSE}
+meta %>% 
+  group_by(family.1) %>% 
+  tally() %>% 
+  #keep families with >1 person (e.g. blocks)
+  filter(n > 1) %>% 
+  #count total families of each size
+  ungroup() %>% 
+  group_by(n) %>% 
+  tally() %>% 
+  arrange(dplyr::desc(n)) %>% 
+  
+  kable(align="l", caption = "1st degree families with 2+ members",
+        col.names = c("Family size", "Total families")) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```  
+
+Here, we see that family blocks do not group in MDS of beta values.
+
+```{r echo=FALSE, message=FALSE, fig.height=8}
+MDS <- cmdscale(dist(t(RSTR.M)), eig=TRUE, k=2)
+
+######
+#List 2+ size families at different degree levels
+kin_tot3 <- meta %>% 
+  distinct(FULLIDNO, family.3) %>% 
+  group_by(family.3) %>% 
+  tally() %>% 
+  filter(n>1)
+
+kin_tot2 <- meta %>% 
+  distinct(FULLIDNO, family.2) %>% 
+  group_by(family.2) %>% 
+  tally() %>% 
+  filter(n>1)
+
+kin_tot1 <- meta %>% 
+  distinct(FULLIDNO, family.1) %>% 
+  group_by(family.1) %>% 
+  tally() %>% 
+  filter(n>1)
+
+######
+MDS.dat <- as.data.frame(MDS$points) %>% 
+  rownames_to_column("Sample_Name") %>% 
+  dplyr::rename(MDS1=V1, MDS2=V2) %>% 
+  #Merge with metadata
+  full_join(meta, by = "Sample_Name") %>% 
+  #create color variables
+  ##3rd degree
+  mutate(family3.group = ifelse(family.3 %in% kin_tot3$family.3, family.3, NA)) %>% 
+  ##2nd degree
+  mutate(family2.group = ifelse(family.2 %in% kin_tot2$family.2, family.2, NA)) %>% 
+  ##1st degree
+  mutate(family1.group = ifelse(family.1 %in% kin_tot1$family.1, family.1, NA))  
+
+######
+#Calculate polygons around groups
+##3rd degree
+MDS.family3 <- filter(MDS.dat, !is.na(family3.group))
+find_hull3 <- function(MDS.family3) MDS.family3[chull(MDS.family3$MDS1, MDS.family3$MDS2), ]
+hulls3 <- ddply(MDS.family3, "family3.group", find_hull3)
+##2nd degree
+MDS.family2 <- filter(MDS.dat, !is.na(family2.group))
+find_hull2 <- function(MDS.family2) MDS.family2[chull(MDS.family2$MDS1, MDS.family2$MDS2), ]
+hulls2 <- ddply(MDS.family2, "family2.group", find_hull2)
+##1st degree
+MDS.family1 <- filter(MDS.dat, !is.na(family1.group))
+find_hull1 <- function(MDS.family1) MDS.family1[chull(MDS.family1$MDS1, MDS.family1$MDS2), ]
+hulls1 <- ddply(MDS.family1, "family1.group", find_hull1)
+
+######
+#PLOTS
+MDS3 <- MDS.dat %>% 
+ggplot(aes(x=MDS1, y=MDS2, color=family3.group)) +
+  geom_point(size=3) +
+  coord_fixed(ratio = 1) +
+  theme_classic() +
+  labs(color="3rd degree\nfamily") + 
+  geom_polygon(data=hulls3, fill=NA, size=1, show.legend=FALSE)
+
+MDS2 <- MDS.dat %>% 
+ggplot(aes(x=MDS1, y=MDS2, color=family2.group)) +
+  geom_point(size=3) +
+  coord_fixed(ratio = 1) +
+  theme_classic() +
+  labs(color="2nd degree\nfamily") + 
+  geom_polygon(data=hulls2, fill=NA, size=1, show.legend=FALSE)
+
+MDS1 <- MDS.dat %>% 
+ggplot(aes(x=MDS1, y=MDS2, color=family1.group)) +
+  geom_point(size=3) +
+  coord_fixed(ratio = 1) +
+  theme_classic() +
+  labs(color="1st degree\nfamily") + 
+  geom_polygon(data=hulls1, fill=NA, size=1, show.legend=FALSE)
+
+######
+wrap_plots(MDS3,MDS2,MDS1) + plot_layout(ncol=1)
+```
+
+Furthermore, blocking by family groups does not improve model fit for the vast majority (> 99%) of probes. See `scripts/DMP.models.R` for running of `kmFit` models.
+
+```{r echo=FALSE}
+load("results/model_selection/base_model.RData")
+load("results/model_selection/family1_model.RData")
+load("results/model_selection/family2_model.RData")
+load("results/model_selection/family3_model.RData")
+```
+
+```{r echo=FALSE, fig.width=9}
+p1 <- plot_fit(model_result = base, x="lm",
+         model_result_y = family1, y="lme",
+         metrics = "AIC")
+p2 <- plot_fit(model_result = base, x="lm",
+         model_result_y = family2, y="lme",
+         metrics = "AIC")
+p3 <- plot_fit(model_result = base, x="lm",
+         model_result_y = family3, y="lme",
+         metrics = "AIC")
+
+wrap_plots(p1,p2,p3)
+```
+
+### Kinship matrix
+
+Individuals were genotyped by Omni5 or MegaEx Chip, and pairwise kinship scores were calculated using PC-Relate in the Genesis package (Stein and Benchek). In the methylation data, `r nrow(kin)` of `r nrow(meta)` samples have kinship data. Of the three missing samples, 283 (RSTR) and 349 (LTBI) are not in any family blocks but 221 (RSTR) is in 84275/84275A/84275A1. Thus, these samples will be removed from analysis.
+
+See `scripts/DMP.models.R` for running of `kmFit` models
+
+```{r echo=FALSE}
+load("results/model_selection/kinship_model.RData")
+```
+
+Kinship improves model fit for a small subset of probes (~4%). It improves residuals for the majority of probes (~62%) and this improvement is much larger than without kinship (dots farther from the 1:1 line).
+
+Given this and kinship's use in other data set analyses, kinship will be used in all further models.
+
+```{r echo=FALSE}
+plot_fit(model_result = base, x="lm",
+         model_result_y = kinship, y="lmerel",
+         metrics = c("AIC","sigma"))
+```
+
+## Demographics: Age, sex, BMI
+
+None of the metadata variables of interest differ between RSTR and LTBI groups. However, these variables may contribute to methylation profiles. Thus, additive models will be assessed in the kinship model subset. See `scripts/DMP.models.R` for running of `kmFit` models
+
+```{r echo=FALSE, warning=FALSE, fig.width=9}
+meta.kin <- meta %>% 
+  filter(FULLIDNO %in% rownames(kin))
+plot1 <-  meta.kin %>% 
+  select(Sample_Name, Sample_Group, KCHCA_AGE_YR_CURRENT, avgBMI) %>% 
+  pivot_longer(-c(Sample_Name, Sample_Group), names_to = "key", values_to = "value") %>% 
+  
+  ggplot(aes(x=Sample_Group, y=value, color=Sample_Group)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(height=0,width=0.2, size=3) +
+  stat_compare_means(method="wilcox.test") +
+  facet_wrap(~key, scales="free") +
+  theme_classic() +
+  theme(legend.position="none")
+  
+sex.p <- table(meta.kin$Sample_Group, meta.kin$M0_KCVSEX) %>% 
+  chisq.test()
+
+plot2<-meta.kin %>% 
+  group_by(Sample_Group, M0_KCVSEX) %>% 
+  tally() %>% 
+  
+  ggplot(aes(x=Sample_Group, y=n, fill=M0_KCVSEX)) +
+  geom_bar(position="fill", stat="identity") +
+  theme_classic() +
+  labs(y="Proportion", title=paste("M0_KCVSEX\nChi-squared = ", round(sex.p$p.value,3), sep="")) +
+  scale_fill_manual(values=c("#f1a340","#998ec3"))
+
+wrap_plots(plot1, plot2) + plot_layout(widths = c(1.5,1))
+```
+
+```{r echo=FALSE}
+load("results/model_selection/kinship_demo_model.RData")
+```
+
+Here, we see a model with demographics improves model fit for only ~2% of genes. However, sex and age correlate with many probes at FDR $\leq$ 0.05 while BMI is significant for many fewer. In addition, global methylation is known to vary with age and sex is significant for a number of ATACseq peaks. Given these results, only sex and age will be included in further analyses.
+
+```{r echo=FALSE}
+plot_fit(model_result = kinship, x="lmerel",
+         model_result_y = kinship_demo, y="lmerel",
+         metrics = "AIC")
+
+summarize_kmFit(kinship_demo$lmerel,
+                fdr.cutoff = c(0.05,0.2))
+```
+
+## TB-related: Risk, BCG
+
+Neither TB metadata variable of interest differs between RSTR and LTBI groups. However, these variables may contribute to methylation profiles. Thus, additive models will be assessed. See `scripts/DMP.models.R` for running of `kmFit` models
+
+```{r echo=FALSE, warning=FALSE}
+plot3 <- meta.kin %>% 
+  
+  ggplot(aes(x=Sample_Group, y=RISK_SCORE, color=Sample_Group)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(height=0,width=0.2, size=3) +
+  stat_compare_means(method="wilcox.test") +
+  theme_classic() +
+  theme(legend.position = "none")
+  
+BCG.p <- table(meta.kin$Sample_Group, meta.kin$KCB_BCGSCAR) %>% 
+  chisq.test()
+
+plot4 <- meta.kin %>% 
+  group_by(Sample_Group, KCB_BCGSCAR) %>% 
+  tally() %>% 
+  
+  ggplot(aes(x=Sample_Group, y=n, fill=KCB_BCGSCAR)) +
+  geom_bar(position="fill", stat="identity") +
+  theme_classic() +
+  labs(y="Proportion", title=paste("BCG\nChi-squared = ", round(BCG.p$p.value,3), sep="")) +
+  scale_fill_manual(values=c("#f1a340","#998ec3"), na.value="grey")
+
+wrap_plots(plot3, plot4)
+```
+
+```{r echo=FALSE}
+load("results/model_selection/kinship_risk_model.RData")
+```
+
+Here, we see that TB risk metrics improves model fit for ~8% of genes. Risk score and BCG scar correlate with few probes at FDR $\leq$ 0.05. Given these results, these metrics will not be included in further analyses.
+
+```{r echo=FALSE}
+plot_fit(model_result = kinship_demo, x="lmerel",
+         model_result_y = kinship_risk, y="lmerel",
+         metrics = "AIC")
+
+summarize_kmFit(kinship_risk$lmerel,
+                fdr.cutoff = c(0.05,0.2))
+```
+
+## Model summary
+
+`~ Sample_Group + M0_KCVSEX + KCHCA_AGE_YR_CURRENT + (1|Sample), varlist=kin`
+
+Excluded
+
+* Family blocks: Kinship improved model fit more as determined by AIC
+* BMI: Minimal significance
+* Risk score: Minimal significance
+* BCG: Minimal significance, forces additional removal of samples
+
+```{r}
+load("results/model_selection/kinship_final_model.RData")
+```
+
+There is no strong evidence for improved model fit with or without co-variates. However, inclusion of sex and age as co-variates slightly increases the number of significant probes detected for RSTR vs. LTBI. This as well as the number of probes that are significant for the co-variates themselves leads us to conclude that the model with co-variates is the better model for these data.
+
+```{r echo=FALSE}
+plot_fit(model_result = kinship, x="lmerel",
+         model_result_y = kinship_final, y="lmerel",
+         metrics = "AIC")
+
+summarize_kmFit(kinship$lmerel,
+                fdr.cutoff = c(0.05,0.2))
+
+summarize_kmFit(kinship_final$lmerel,
+                fdr.cutoff = c(0.05,0.2))
+```
+
+# R session
+
+```{r}
+sessionInfo()
+```
+
+***
