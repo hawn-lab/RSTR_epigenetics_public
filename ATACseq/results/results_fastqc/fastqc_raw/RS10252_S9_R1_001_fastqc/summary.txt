@@ -1,0 +1,11 @@
+PASS	Basic Statistics	RS10252_S9_R1_001.fastq.gz
+PASS	Per base sequence quality	RS10252_S9_R1_001.fastq.gz
+PASS	Per tile sequence quality	RS10252_S9_R1_001.fastq.gz
+PASS	Per sequence quality scores	RS10252_S9_R1_001.fastq.gz
+FAIL	Per base sequence content	RS10252_S9_R1_001.fastq.gz
+WARN	Per sequence GC content	RS10252_S9_R1_001.fastq.gz
+PASS	Per base N content	RS10252_S9_R1_001.fastq.gz
+PASS	Sequence Length Distribution	RS10252_S9_R1_001.fastq.gz
+WARN	Sequence Duplication Levels	RS10252_S9_R1_001.fastq.gz
+PASS	Overrepresented sequences	RS10252_S9_R1_001.fastq.gz
+PASS	Adapter Content	RS10252_S9_R1_001.fastq.gz

@@ -1,0 +1,11 @@
+PASS	Basic Statistics	RS10252.pair1.truncated.gz
+PASS	Per base sequence quality	RS10252.pair1.truncated.gz
+PASS	Per tile sequence quality	RS10252.pair1.truncated.gz
+PASS	Per sequence quality scores	RS10252.pair1.truncated.gz
+PASS	Per base sequence content	RS10252.pair1.truncated.gz
+PASS	Per sequence GC content	RS10252.pair1.truncated.gz
+PASS	Per base N content	RS10252.pair1.truncated.gz
+WARN	Sequence Length Distribution	RS10252.pair1.truncated.gz
+WARN	Sequence Duplication Levels	RS10252.pair1.truncated.gz
+PASS	Overrepresented sequences	RS10252.pair1.truncated.gz
+PASS	Adapter Content	RS10252.pair1.truncated.gz
