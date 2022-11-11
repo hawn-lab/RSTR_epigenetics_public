@@ -1,0 +1,264 @@
+---
+title: "Lipoproteins and cholesterol efflux"
+subtitle: "RSTR vs. LTBI"
+author: "Kim Dill-McFarland, kadm@uw.edu"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+# Setup
+Load packages
+
+```{r message=FALSE, warning=FALSE}
+# Data manipulation and figures
+library(tidyverse)
+library(readxl)
+library(BIGpicture)
+library(ggrepel)
+# Linear modeling
+library(kimma)
+#Print pretty tables to Rmd
+library(knitr)
+library(kableExtra)
+  options(knitr.kable.NA = '')
+```
+
+Set seed
+
+```{r}
+set.seed(589)
+```
+
+# Load data
+
+From Tomas Vaisar
+
+```{r}
+dat <- list()
+dat$targets <- read_csv("../data_refs/2021.09.08RSTR_Hawn_metadata.csv") %>% 
+  distinct(FULLIDNO, RS_SUB_ACCESSION_NO, Sample_Group, M0_KCVSEX, KCHCA_AGE_YR_CURRENT,
+           avgBMI, RISK_SCORE) %>% 
+  drop_na(RS_SUB_ACCESSION_NO) %>% 
+  arrange(FULLIDNO)
+
+dat$E <- read_excel("data_raw/Study191_DMA_Efflux_ForKim211012.xlsx", 
+                  sheet="DMA.data") %>% 
+  select(AssayID, SUB_ACCESSION_NO, tHDL:xlHDL.sz) %>% 
+  full_join(read_excel("data_raw/Study191_DMA_Efflux_ForKim211012.xlsx", 
+                       sheet="Efflux.data"), by = "AssayID") %>% 
+  select(-Group) %>% 
+  left_join(distinct(dat$targets, RS_SUB_ACCESSION_NO, FULLIDNO),
+            by=c("SUB_ACCESSION_NO"="RS_SUB_ACCESSION_NO")) %>% 
+  select(FULLIDNO, tHDL:ABCA1.spec) %>% 
+  arrange(FULLIDNO) %>% 
+  column_to_rownames("FULLIDNO") %>% 
+  t() %>% as.data.frame()
+
+dat$targets <- dat$targets %>% 
+  filter(FULLIDNO %in% colnames(dat$E)) %>% 
+  distinct(FULLIDNO, Sample_Group, M0_KCVSEX, KCHCA_AGE_YR_CURRENT,
+           avgBMI, RISK_SCORE)
+```
+
+```{r}
+#Check one measure per individual
+length(unique(dat$targets$FULLIDNO)) == ncol(dat$E)
+```
+
+## Explore data
+
+Nothing stands out as particularly non-normal.
+
+```{r echo=FALSE, message=FALSE}
+dat$E %>% 
+  rownames_to_column() %>%
+  pivot_longer(-rowname, names_to = "FULLIDNO") %>% 
+  left_join(dat$targets) %>% 
+  ggplot(aes(x=value)) +
+  geom_histogram(bins = 40) +
+  theme_classic() +
+  facet_wrap(~rowname, scales = "free") +
+  labs(x="")
+```
+
+Differences between groups are not large.
+
+```{r echo=FALSE, message=FALSE, fig.height=10}
+dat$E %>% 
+  rownames_to_column() %>%
+  pivot_longer(-rowname, names_to = "FULLIDNO") %>% 
+  left_join(dat$targets) %>% 
+  ggplot(aes(x=Sample_Group, y=value)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width=0.2, height=0) +
+  theme_classic() +
+  facet_wrap(~rowname, scales = "free") +
+  labs(x="",y="")
+```
+
+# Linear modeling
+## Base model
+
+```{r}
+model <- kmFit(dat, model="~Sample_Group", run.lm = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+summarise_kmFit(model$lm, p.cutoff=c(0.01,0.05,0.1))
+```
+
+## Co-variates
+### Kinship
+
+```{r echo=FALSE, message=FALSE}
+kin <- read_csv("../data_refs/kinship_Hawn_all.csv")
+overlap <- intersect(kin$rowname, dat$targets$FULLIDNO)
+
+kin <- kin %>% 
+  filter(rowname %in% overlap) %>% 
+  column_to_rownames() %>% 
+  select(all_of(overlap)) %>% 
+  as.matrix()
+```
+
+```{r}
+model.kin <- kmFit(dat, kin, model="~Sample_Group+(1|FULLIDNO)", run.lmekin = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+
+summarise_kmFit(model.kin$lmekin, p.cutoff=c(0.01,0.05,0.1))
+
+plot_sigma(model, model.kin, x="lm", y="lmekin") + 
+  coord_fixed() + 
+  theme(legend.position = "bottom", legend.direction = "vertical") +
+  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
+                  show.legend = FALSE, max.overlaps = Inf) 
+```
+
+### Sex
+
+```{r}
+model.kin.sex <- kmFit(dat, kin, model="~Sample_Group+M0_KCVSEX+(1|FULLIDNO)", 
+                       run.lmekin = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+
+summarise_kmFit(model.kin.sex$lmekin, p.cutoff=c(0.01,0.05,0.1))
+
+plot_sigma( model.kin, model.kin.sex, x="lmekin", y="lmekin") + 
+  coord_fixed() +
+  theme(legend.position = "bottom", legend.direction = "vertical") +
+  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
+                  show.legend = FALSE, max.overlaps = Inf) 
+```
+
+### Age
+
+```{r}
+model.kin.age <- kmFit(dat, kin, model="~Sample_Group+KCHCA_AGE_YR_CURRENT+(1|FULLIDNO)", 
+                       run.lmekin = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+
+summarise_kmFit(model.kin.age$lmekin, p.cutoff=c(0.01,0.05,0.1))
+
+plot_sigma(model.kin, model.kin.age, x="lmekin", y="lmekin") + 
+  coord_fixed() +
+  theme(legend.position = "bottom", legend.direction = "vertical") +
+  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
+                  show.legend = FALSE, max.overlaps = Inf) 
+```
+
+### BMI
+
+```{r}
+model.kin.bmi <- kmFit(dat, kin, model="~Sample_Group+avgBMI+(1|FULLIDNO)", 
+                       run.lmekin = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+
+summarise_kmFit(model.kin.bmi$lmekin, p.cutoff=c(0.01,0.05,0.1))
+
+plot_sigma(model.kin, model.kin.bmi, x="lmekin", y="lmekin") + 
+  coord_fixed() +
+  theme(legend.position = "bottom", legend.direction = "vertical") +
+  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
+                  show.legend = FALSE, max.overlaps = Inf) 
+```
+
+## Full model
+
+```{r}
+model.all <- kmFit(dat, kin,
+                   model="~Sample_Group+avgBMI+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+(1|FULLIDNO)",
+                   run.lmekin = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+
+summarise_kmFit(model.all$lmekin, p.cutoff=c(0.01,0.05,0.1))
+
+plot_sigma(model.kin, model.all, x="lmekin", y="lmekin") + 
+  coord_fixed() +
+  theme(legend.position = "bottom", legend.direction = "vertical") +
+  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
+                  show.legend = FALSE, max.overlaps = Inf) 
+```
+
+# Significant results
+
+Recalculate FDR within groups.
+
+```{r}
+fdr <- model.all$lmekin %>% 
+  mutate(group = ifelse(grepl("HDL.sz", gene), "HDL.sz",
+                        ifelse(grepl("HDL", gene), "HDL",
+                               "other"))) %>% 
+  group_by(group, variable) %>% 
+  mutate(FDR.new = p.adjust(pval, method = "BH")) %>% 
+  ungroup()
+
+write_csv(fdr, file="results/lipoprot_efflux_model_results.csv")
+
+dat2 <- dat$E %>% 
+  t() %>% as.data.frame() %>% 
+  rownames_to_column("FULLIDNO") %>% 
+  filter(FULLIDNO %in% rownames(kin)) %>% 
+  pivot_longer(-FULLIDNO, names_to = "gene") %>% 
+  left_join(dat$targets, by = "FULLIDNO") %>% 
+  left_join(fdr, by = "gene") 
+
+dat2 %>% 
+  filter(variable == "Sample_GroupRSTR" & pval < 0.1) %>% 
+  mutate(facet.lab = paste0(gene, "\nP = ", round(pval, digits=3), "\n",
+                            "FDR = ", round(FDR.new, digits=3))) %>% 
+  mutate(age_group = cut(KCHCA_AGE_YR_CURRENT, seq(10, 70, 20))) %>% 
+  
+  ggplot(aes(x=Sample_Group, y=value)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(aes(color=age_group), width=0.2, height=0) +
+  theme_classic() +
+  facet_wrap(~facet.lab, scales = "free") +
+  labs(x="",y="",color="Age (yrs)")
+```
+
+# Check age
+
+```{r}
+dat2 %>% 
+  distinct(FULLIDNO, Sample_Group, KCHCA_AGE_YR_CURRENT) %>% 
+  ggplot(aes(x=Sample_Group, y=KCHCA_AGE_YR_CURRENT)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width=0.2, height=0) +
+  theme_classic() +
+  labs(x="")
+
+dat2 %>% 
+  distinct(FULLIDNO, Sample_Group, KCHCA_AGE_YR_CURRENT) %>% 
+  t.test(KCHCA_AGE_YR_CURRENT~Sample_Group, data=.)
+```
+
+# R session
+
+```{r}
+sessionInfo()
+```
+
+***
