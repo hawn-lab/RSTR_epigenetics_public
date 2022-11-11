@@ -1,0 +1,14 @@
+DMR_genes,annotation.group,DMR,no.cpgs,FC.groups,MEDIA,TB
+CDH4,body,DMR 22,2,-,n.s.,n.s.
+DEF8,TSS1500,DMR 19,2,-,n.s.,n.s.
+PER3,body,DMR 37,4,-,-,n.s.
+PLA2G3,TSS1500/5'UTR,DMR 49,5,-,n.s.,-
+SHANK2,body,DMR 20,3,-,n.s.,n.s.
+SHANK2,body,DMR 59,6,-,n.s.,n.s.
+APOC3,TSS1500,DMR 25,2,+,n.s.,n.s.
+CDC42EP3,TSS1500,DMR 30,2,+,n.s.,n.s.
+RPTOR,body,DMR 18,2,+,n.s.,n.s.
+CIT,TSS1500/exon,DMR 62,7,+/-,n.s.,n.s.
+KCNQ1,TSS1500,DMR 61,6,+/-,n.s.,+
+MCM2,body,DMR 10,2,+/-,+,+
+RARG,body/TSS1500,DMR 44,4,+/-,-,n.s.
