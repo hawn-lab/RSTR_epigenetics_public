@@ -1,0 +1,452 @@
+---
+title: "Methylation EPIC array data clean-up"
+subtitle: "RSTR vs. LTBI, full dataset"
+author: "Kim Dill-McFarland, kadm@uw.edu"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+# Background
+
+The purpose of this workflow is to complete basic data cleaning of methylation data. This includes 1) filtering low quality, non-CpG, XY, and SNP adjacent probes, 2) functional normalization, 3) chip bias correction, and 4) log2 transformation.
+
+# Setup
+
+Load packages
+
+```{r message=FALSE, warning=FALSE}
+# Methylation data package
+library(ChAMP)
+# For parallel computing
+library(doParallel)
+# Tabular data cleaning
+library(tidyverse)
+# Print pretty table to knit file
+library(knitr)
+library(kableExtra)
+```
+
+Set seed
+
+```{r}
+set.seed(589)
+```
+
+# Data cleaning
+Defaults used unless otherwise specified.
+
+## Data import
+All `.idat` files as well as .csv sample sheet need to be in 1 directory.
+
+```{r echo=FALSE, warning=FALSE}
+read_csv("data_Methyl_raw/sample_sheet.csv") %>% 
+  setNames(as.character(.[7,])) %>% 
+  dplyr::slice(8:n()) %>% 
+  kable(align="l") %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+```{r results=FALSE, message=FALSE}
+RSTR <- champ.import(directory = "data_Methyl_raw/", arraytype = "EPIC")
+  # Reformat sample sheet variables to factors as needed
+  ## Required for SVD to process variables correctly
+  RSTR$pd <-  RSTR$pd %>% 
+    mutate(Sample_Name = as.factor(Sample_Name)) %>% 
+    mutate(Sample_Plate = as.factor(Sample_Plate)) %>% 
+    mutate(Slide = as.factor(Slide))
+```
+
+View raw data
+
+```{r message=FALSE, results=FALSE}
+dir.create("figs/cleanup/", recursive = TRUE, showWarnings = FALSE)
+
+champ.QC(
+    # Call data
+    beta = RSTR$beta,
+    pheno = RSTR$pd$Sample_Group,
+    
+    # Generate plots
+    mdsPlot = TRUE,
+    densityPlot = TRUE,
+    dendrogram = TRUE,
+      ## Use all probes in dendrogram
+      Feature.sel = "None",
+    
+    # Save plots
+    PDFplot = TRUE,
+    Rplot = TRUE,
+    resultsDir = "figs/cleanup/1.raw"
+    )
+```
+
+## Data filtering
+
+```{r message=FALSE}
+RSTR.filter <- 
+  champ.filter(
+  # Call data
+  beta = RSTR$beta,
+  M = NULL,
+  pd = RSTR$pd,
+  intensity = RSTR$intensity,
+  Meth = RSTR$Meth,
+  UnMeth = RSTR$UnMeth,
+  detP = RSTR$detP,
+  beadcount = RSTR$beadcount,
+  arraytype = "EPIC",
+             
+  # P-val cutoffs.
+    ## Samples with failed p-val proportion > cutoff are removed
+    SampleCutoff = 0.1, 
+    ## Probes with failed p-val proportion > cutoff are removed
+    ProbeCutoff = 0,
+  
+    ## Probes above detPcut value are removed
+    filterDetP = TRUE,
+    detPcut = 0.01,
+      ### If NAs still exist, imputation should NOT be done on them
+      ### With ProbeCutoff = 0, not needed
+      autoimpute = FALSE,
+  
+  # Filter probes with < 3 beads in at least 5% of samples
+  filterBeads = TRUE,
+  beadCutoff = 0.05,
+  
+  # Remove non-cg probes
+  filterNoCG	= TRUE,
+             
+  # Remove CpG probes near SNP as defined in Zhou Nucleic Acids Research 2016
+  filterSNPs	= TRUE,
+             
+  # Remove probes with multiple bwa alignments as defined in Nordlund et al
+  filterMultiHit	= TRUE,
+             
+  # Remove X and Y chromosomes
+  filterXY = TRUE,
+             
+  # Beta values < 0 replaced with min positive value
+  # Beta values > 1 replaced with max positive value
+  fixOutlier = TRUE
+)
+```
+
+View filtered data
+
+```{r results=FALSE, message=FALSE}
+champ.QC(
+    # Call data
+    beta = RSTR.filter$beta,
+    pheno = RSTR.filter$pd$Sample_Group,
+    
+    # Generate plots
+    mdsPlot = TRUE,
+    densityPlot = TRUE,
+    dendrogram = TRUE,
+      ## Use all probes in dendrogram
+      Feature.sel = "None",
+    
+    # Save plots
+    PDFplot = TRUE,
+    Rplot = TRUE,
+    resultsDir = "figs/cleanup/2.filter/"
+    )
+```
+
+## Normalization
+### Functional normalization
+
+Create rgSet data (no longer created automatically by `champ.import()`)
+
+```{r warning=FALSE}
+RSTR.rgSet <- read.metharray.exp(base = "data_Methyl_raw/")
+  # Rename value to conform to champ.norm() parameter
+  RSTR.rgSet@annotation[2] <- "ilm10b3.hg19"
+```
+
+Run functional normalization
+
+```{r message=FALSE}
+RSTR.filter.norm <- 
+  champ.norm(
+    #Call data
+    rgSet = RSTR.rgSet,
+    beta = RSTR.filter$beta,
+
+    # Fxtional normalization method
+    method = "FunctionalNormalization",
+    arraytype = "EPIC",
+    # Parallelize
+    cores = 3,
+
+    # Save results
+    resultsDir = "figs/cleanup/3.FXNnorm/")
+```
+
+View normalized data
+
+```{r results=FALSE, message=FALSE}
+champ.QC(
+    # Call data
+    beta = RSTR.filter.norm,
+    pheno = RSTR.filter$pd$Sample_Group,
+    
+    # Generate plots
+    mdsPlot = TRUE,
+    densityPlot = TRUE,
+    dendrogram = TRUE,
+      ## Use all probes in dendrogram
+      Feature.sel = "None",
+    
+    # Save plots
+    PDFplot = TRUE,
+    Rplot = TRUE,
+    resultsDir = "figs/cleanup/3.FXNnorm/"
+    )
+```
+
+### Chip normalization
+
+Detect if there is chip (*i.e.* slide) bias. *Note*: All variables of interest need to be `factors`.
+
+```{r message=FALSE}
+champ.SVD(
+  # Call data
+  beta = RSTR.filter.norm,
+  rgSet = RSTR.rgSet,
+  pd = RSTR.filter$pd,
+  
+  # Calculate green and red control probes
+  RGEffect = TRUE,
+  
+  # Save plots
+  PDFplot = TRUE,
+  Rplot = TRUE,
+  resultsDir = "figs/cleanup/4.SVD/pre")
+```
+
+Slide variation detected. Therefore, run ComBat.
+
+```{r message=FALSE}
+RSTR.filter.norm.combat <- 
+  champ.runCombat(
+  # Call data
+  beta=RSTR.filter.norm,
+  pd=RSTR.filter$pd,
+  # Define variable with apparent batch effect
+  batchname=c("Slide"),
+  # Logit transformed before Combat correction; inverse logit after correction
+  ## Recommended when using beta values
+  logitTrans=TRUE)
+```
+
+Verify that slide variation is corrected.
+
+```{r results=FALSE, message=FALSE}
+champ.SVD(
+  # Call data
+  beta = RSTR.filter.norm.combat,
+  rgSet = RSTR.rgSet,
+  pd = RSTR.filter$pd,
+  
+  # Calculate green and red control probes
+  RGEffect = TRUE,
+  
+  # Save plots
+  PDFplot = TRUE,
+  Rplot = TRUE,
+  resultsDir = "figs/cleanup/4.SVD/post")
+```
+
+View further normalized data
+
+```{r results=FALSE, message=FALSE}
+champ.QC(
+    # Call data
+    beta = RSTR.filter.norm.combat,
+    pheno = RSTR.filter$pd$Sample_Group,
+    
+    # Generate plots
+    mdsPlot = TRUE,
+    densityPlot = TRUE,
+    dendrogram = TRUE,
+      ## Use all probes in dendrogram
+      Feature.sel = "None",
+    
+    # Save plots
+    PDFplot = TRUE,
+    Rplot = TRUE,
+    resultsDir = "figs/cleanup/5.combat/"
+    )
+```
+
+### Convert to log2 M values
+
+```{r}
+#order samples
+samp.ord <- as.character(sort(as.numeric(colnames(RSTR.filter.norm.combat))))
+
+RSTR.beta <- as.data.frame(RSTR.filter.norm.combat) %>% 
+  rownames_to_column() %>% 
+  #Reorder columns
+  select(rowname, all_of(samp.ord)) %>% 
+  #Covert to matrix
+  column_to_rownames() %>% 
+  as.matrix() 
+
+#Calculate log2 ratios (M-values) from Beta
+RSTR.M <- minfi::logit2(RSTR.beta)
+```
+
+## Save cleaned data
+
+```{r}
+dir.create("data_Methyl_clean/", recursive = TRUE, showWarnings = FALSE)
+# NOTE that some files need to be gzipped in order to be under GitHub size max of 100MB
+
+# Beta values table
+as.data.frame(RSTR.beta) %>% 
+  rownames_to_column("probeID") %>% 
+  write.table(sep=",", row.names=FALSE, col.names=TRUE,
+              file=gzfile("data_Methyl_clean/RSTR_clean_beta.csv.gz"))
+#M values
+as.data.frame(RSTR.M) %>% 
+  rownames_to_column("probeID") %>% 
+  write.table(sep=",", row.names=FALSE, col.names=TRUE,
+              file=gzfile("data_Methyl_clean/RSTR_clean_M.csv.gz"))
+
+# Multi-hit probes
+write.table(multi.hit, sep=",", row.names=FALSE, col.names=TRUE,
+              file="data_Methyl_clean/RSTR_multihit.csv")
+```
+
+```{r}
+# Probe features
+#add hg 38 features
+hg38 <- readRDS("data_Methyl_clean/EPIC.hg38.manifest.rds") %>% 
+  as.data.frame() %>% 
+  rownames_to_column("probeID") %>% 
+  select(probeID, seqnames, start, end, strand, gene_HGNC) %>% 
+  rename_with(~paste(., "hg38", sep="_"), -probeID)
+
+probe.features %>% 
+  rownames_to_column("probeID") %>%
+  left_join(hg38) %>% 
+  write.table(sep=",", row.names=FALSE, col.names=TRUE,
+              file=gzfile("data_Methyl_clean/RSTR_probe_features.csv.gz"))
+```
+
+# Summary
+
+```{r echo=FALSE, results=FALSE, message=FALSE}
+# Calculate values
+## NEED TO CHANGE if change champ.filter() parameters
+
+raw <- nrow(RSTR$beta)
+ctrl <- Anno[["ControlProbe"]] %>% filter(V2 == "NEGATIVE") %>%  nrow()
+filt <- nrow(RSTR.filter$beta)
+
+  # Filter based on detection pval
+  pval <- as.data.frame(RSTR$detP) %>% 
+    # Gather all samples into 1 column
+    rownames_to_column() %>% 
+    gather(-rowname, key = "key", value = "value") %>% 
+    # Determine maximum pval for each probe
+    group_by(rowname) %>% 
+    summarize(maxp = max(value)) %>% 
+    ungroup() %>% 
+    # Keep max p-vals above threshold
+    filter(maxp > 0.01)
+  
+  # Filter based on beadcount
+  bead <- as.data.frame(RSTR$beadcount) %>% 
+    # Gather all samples into 1 column
+    rownames_to_column() %>% 
+    gather(-rowname, key = "key", value = "value") %>%
+    # Keep only bead counts below cutoff = 3
+    ## The cutoff value cannot be changed as champ.import puts NAs for beadcount < 3 and this is what champ.filter uses for filtering at this step
+    filter(is.na(value)) %>%
+    # Count number of samples below cutoff for each probe
+    ## Replace NAs with 0 first so are counted with n()
+    mutate(value = replace_na(value,0)) %>% 
+    group_by(rowname) %>%
+    summarize(n=n()) %>% 
+    # Keep probes with 5%+ samples below cutoff
+    filter(n >= ncol(RSTR$beta) * 0.05) %>% 
+    # Remove probes already filtered
+    filter(!rowname %in% pval$rowname)
+    
+  nonCpG <- EPIC.manifest.hg19 %>% 
+    # Select variable of interest
+    rownames_to_column() %>% 
+    select(rowname, probeType) %>% 
+    # Remove CpG probes
+    filter(probeType != "cg") %>% 
+    # Remove probes already filtered
+    filter(!rowname %in% c(pval$rowname, bead$rowname))
+  
+  # Filter by SNPs
+  ## Load comparison data
+  data(EPIC.manifest.hg19) 
+  ## Filter comparison data to SNPs
+  EPIC.SNP <- EPIC.manifest.hg19 %>% 
+    rownames_to_column() %>% 
+    filter(MASK_general == TRUE)
+  
+  ## Filter
+  SNP <- as.data.frame(RSTR$beta) %>% 
+    rownames_to_column() %>% 
+    # Keep probes ID'ed as SNPs (MASK = TRUE)
+    filter(rowname %in% EPIC.SNP$rowname) %>% 
+    # Remove probes already filtered
+    filter(!rowname %in% c(pval$rowname, bead$rowname, 
+                           nonCpG$rowname))
+   
+  multi <- as.data.frame(RSTR$beta) %>% 
+    rownames_to_column() %>%
+    # Keep probes IDed as multi-hits
+    filter(rowname %in% multi.hit$TargetID) %>% 
+    # Remove probes already filtered
+    filter(!rowname %in% c(pval$rowname, bead$rowname, 
+                           nonCpG$rowname, SNP$rowname))
+    
+  XY <- EPIC.manifest.hg19 %>% 
+    rownames_to_column() %>% 
+    # Keep X and Y chromosome probes
+    filter(CpG_chrm %in% c("chrX","chrY")) %>% 
+    # Remove probes already filtered
+    filter(!rowname %in% c(pval$rowname, bead$rowname, 
+                           nonCpG$rowname, SNP$rowname,
+                           multi$rowname))
+
+  filt.remove <- sum(nrow(pval), nrow(bead), nrow(nonCpG),
+                   nrow(SNP), nrow(multi), nrow(XY))
+```
+
+**Probes remaining after clean-up steps.**
+
+Data          | Step        | Total   | Control | Removed (full)  | Removed (pilot)
+------------- | ---------   | ------- | ------- | --------------- | ---------------
+RSTR          | import      | `r raw` |`r ctrl` | NA              | NA
+filter        | filter      |`r filt` |`r ctrl` | `r filt.remove` | 160218
+.             | _p-val_     |         |         | `r nrow(pval)`  | 3746
+.             | _bead count_|         |         | `r nrow(bead)`  | 44894
+.             | _non-CpG_   |         |         | `r nrow(nonCpG)`| 2725
+.             | _SNP_       |         |         | `r nrow(SNP)`   | 92806
+.             | _multi-hit_ |         |         | `r nrow(multi)` | 10	
+.             | _XY_        |         |         | `r nrow(XY)`    | 16037
+filter.norm   | functional  |`r filt` |`r ctrl` | 0               | 0
+filter.norm.combat | chip   |`r filt` |`r ctrl` | 0               | 0
+
+# R session
+
+```{r}
+sessionInfo()
+```
+
+***
