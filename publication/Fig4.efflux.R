@@ -28,7 +28,7 @@ dat.kin <- dat %>%
 
 #Filter to significant hits
 dat.signif <- read_csv("lipoprotein/results/lipoprot_efflux_model_results.csv") %>% 
-  filter(variable == "Sample_GroupRSTR") %>% 
+  filter(variable == "Sample_Group") %>% 
   left_join(dat.kin)
 
 #### Efflux plot ####

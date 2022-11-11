@@ -106,7 +106,8 @@ dat$E %>%
 
 ```{r}
 model <- kmFit(dat, model="~Sample_Group", run.lm = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                  metrics=TRUE)
 summarise_kmFit(model$lm, p.cutoff=c(0.01,0.05,0.1))
 ```
 
@@ -125,14 +126,13 @@ kin <- kin %>%
 ```
 
 ```{r}
-model.kin <- kmFit(dat, kin, model="~Sample_Group+(1|FULLIDNO)", run.lmekin = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+model.kin <- kmFit(dat, kin, model="~Sample_Group+(1|FULLIDNO)", run.lmerel = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                  metrics=TRUE)
 
-summarise_kmFit(model.kin$lmekin, p.cutoff=c(0.01,0.05,0.1))
+summarise_kmFit(model.kin$lmerel, p.cutoff=c(0.01,0.05,0.1))
 
-plot_sigma(model, model.kin, x="lm", y="lmekin") + 
-  coord_fixed() + 
-  theme(legend.position = "bottom", legend.direction = "vertical") +
+plot_fit(model, model.kin, x="lm", y="lmerel", metrics = c("AIC","sigma")) + 
   geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
                   show.legend = FALSE, max.overlaps = Inf) 
 ```
@@ -141,14 +141,14 @@ plot_sigma(model, model.kin, x="lm", y="lmekin") +
 
 ```{r}
 model.kin.sex <- kmFit(dat, kin, model="~Sample_Group+M0_KCVSEX+(1|FULLIDNO)", 
-                       run.lmekin = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+                       run.lmerel = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                  metrics=TRUE)
 
-summarise_kmFit(model.kin.sex$lmekin, p.cutoff=c(0.01,0.05,0.1))
+summarise_kmFit(model.kin.sex$lmerel, p.cutoff=c(0.01,0.05,0.1))
 
-plot_sigma( model.kin, model.kin.sex, x="lmekin", y="lmekin") + 
-  coord_fixed() +
-  theme(legend.position = "bottom", legend.direction = "vertical") +
+plot_fit(model.kin, model.kin.sex, x="lmerel", y="lmerel",
+         metrics = c("AIC","sigma")) + 
   geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
                   show.legend = FALSE, max.overlaps = Inf) 
 ```
@@ -157,32 +157,32 @@ plot_sigma( model.kin, model.kin.sex, x="lmekin", y="lmekin") +
 
 ```{r}
 model.kin.age <- kmFit(dat, kin, model="~Sample_Group+KCHCA_AGE_YR_CURRENT+(1|FULLIDNO)", 
-                       run.lmekin = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+                       run.lmerel = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                  metrics = TRUE)
 
-summarise_kmFit(model.kin.age$lmekin, p.cutoff=c(0.01,0.05,0.1))
+summarise_kmFit(model.kin.age$lmerel, p.cutoff=c(0.01,0.05,0.1))
 
-plot_sigma(model.kin, model.kin.age, x="lmekin", y="lmekin") + 
-  coord_fixed() +
-  theme(legend.position = "bottom", legend.direction = "vertical") +
+plot_fit(model.kin, model.kin.age, x="lmerel", y="lmerel",
+         metrics = c("AIC","sigma")) + 
   geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf) 
+                  show.legend = FALSE, max.overlaps = Inf)
 ```
 
 ### BMI
 
 ```{r}
 model.kin.bmi <- kmFit(dat, kin, model="~Sample_Group+avgBMI+(1|FULLIDNO)", 
-                       run.lmekin = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+                       run.lmerel = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                  metrics=TRUE)
 
-summarise_kmFit(model.kin.bmi$lmekin, p.cutoff=c(0.01,0.05,0.1))
+summarise_kmFit(model.kin.bmi$lmerel, p.cutoff=c(0.01,0.05,0.1))
 
-plot_sigma(model.kin, model.kin.bmi, x="lmekin", y="lmekin") + 
-  coord_fixed() +
-  theme(legend.position = "bottom", legend.direction = "vertical") +
+plot_fit(model.kin, model.kin.bmi, x="lmerel", y="lmerel",
+         metrics = c("AIC","sigma")) + 
   geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf) 
+                  show.legend = FALSE, max.overlaps = Inf)
 ```
 
 ## Full model
@@ -190,16 +190,16 @@ plot_sigma(model.kin, model.kin.bmi, x="lmekin", y="lmekin") +
 ```{r}
 model.all <- kmFit(dat, kin,
                    model="~Sample_Group+avgBMI+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+(1|FULLIDNO)",
-                   run.lmekin = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO")
+                   run.lmerel = TRUE, 
+                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                  metrics = TRUE)
 
-summarise_kmFit(model.all$lmekin, p.cutoff=c(0.01,0.05,0.1))
+summarise_kmFit(model.all$lmerel, p.cutoff=c(0.01,0.05,0.1))
 
-plot_sigma(model.kin, model.all, x="lmekin", y="lmekin") + 
-  coord_fixed() +
-  theme(legend.position = "bottom", legend.direction = "vertical") +
+plot_fit(model.kin, model.all, x="lmerel", y="lmerel",
+         metrics = c("AIC","sigma")) + 
   geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf) 
+                  show.legend = FALSE, max.overlaps = Inf)
 ```
 
 # Significant results
@@ -207,7 +207,7 @@ plot_sigma(model.kin, model.all, x="lmekin", y="lmekin") +
 Recalculate FDR within groups.
 
 ```{r}
-fdr <- model.all$lmekin %>% 
+fdr <- model.all$lmerel %>% 
   mutate(group = ifelse(grepl("HDL.sz", gene), "HDL.sz",
                         ifelse(grepl("HDL", gene), "HDL",
                                "other"))) %>% 
@@ -226,7 +226,7 @@ dat2 <- dat$E %>%
   left_join(fdr, by = "gene") 
 
 dat2 %>% 
-  filter(variable == "Sample_GroupRSTR" & pval < 0.1) %>% 
+  filter(variable == "Sample_Group" & pval < 0.1) %>% 
   mutate(facet.lab = paste0(gene, "\nP = ", round(pval, digits=3), "\n",
                             "FDR = ", round(FDR.new, digits=3))) %>% 
   mutate(age_group = cut(KCHCA_AGE_YR_CURRENT, seq(10, 70, 20))) %>% 
