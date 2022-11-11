@@ -90,7 +90,7 @@ Add ENSEMBL, ENTREZ, and location data.
 ```{r}
 #Get reference genome
 ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl", 
-                   host = "https://uswest.ensembl.org")
+                   host = "https://useast.ensembl.org")
   #Check genome version
   searchDatasets(mart = ensembl, pattern = "hsapiens")
 ```

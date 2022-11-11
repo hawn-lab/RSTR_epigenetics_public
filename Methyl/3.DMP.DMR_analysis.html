@@ -1512,7 +1512,7 @@ div.tocify {
 regions (DMR)</h1>
 <h3 class="subtitle">RSTR vs. LTBI, full dataset</h3>
 <h4 class="author">Kim Dill-McFarland, <a href="mailto:kadm@uw.edu" class="email">kadm@uw.edu</a></h4>
-<h4 class="date">version November 03, 2022</h4>
+<h4 class="date">version November 10, 2022</h4>
 
 </div>
 
@@ -1718,9 +1718,9 @@ ggsave(&quot;figs/DMR_Manhattan_plot.png&quot;, DMR.man.plot,
 ## 
 ## other attached packages:
 ##  [1] kableExtra_1.3.4     knitr_1.40           ggman_0.99.0        
-##  [4] ggrepel_0.9.1        forcats_0.5.2        stringr_1.4.1       
+##  [4] ggrepel_0.9.2        forcats_0.5.2        stringr_1.4.1       
 ##  [7] dplyr_1.0.10         purrr_0.3.5          readr_2.1.3         
-## [10] tidyr_1.2.1          tibble_3.1.8         ggplot2_3.3.6       
+## [10] tidyr_1.2.1          tibble_3.1.8         ggplot2_3.4.0       
 ## [13] tidyverse_1.3.2      org.Hs.eg.db_3.15.0  AnnotationDbi_1.58.0
 ## [16] IRanges_2.30.1       S4Vectors_0.34.0     Biobase_2.56.0      
 ## [19] BiocGenerics_0.42.0  DMRcate_2.10.0       kimma_1.4.4         
@@ -1735,7 +1735,7 @@ ggsave(&quot;figs/DMR_Manhattan_plot.png&quot;, DMR.man.plot,
 ##   [6] minfi_1.42.0                                       
 ##   [7] bit64_4.0.5                                        
 ##   [8] DelayedArray_0.22.0                                
-##   [9] R.utils_2.12.0                                     
+##   [9] R.utils_2.12.1                                     
 ##  [10] data.table_1.14.4                                  
 ##  [11] rpart_4.1.19                                       
 ##  [12] KEGGREST_1.36.3                                    
@@ -1750,7 +1750,7 @@ ggsave(&quot;figs/DMR_Manhattan_plot.png&quot;, DMR.man.plot,
 ##  [21] tzdb_0.3.0                                         
 ##  [22] webshot_0.5.4                                      
 ##  [23] xml2_1.3.3                                         
-##  [24] lubridate_1.8.0                                    
+##  [24] lubridate_1.9.0                                    
 ##  [25] httpuv_1.6.6                                       
 ##  [26] SummarizedExperiment_1.26.1                        
 ##  [27] assertthat_0.2.1                                   
@@ -1759,7 +1759,7 @@ ggsave(&quot;figs/DMR_Manhattan_plot.png&quot;, DMR.man.plot,
 ##  [30] xfun_0.34                                          
 ##  [31] hms_1.1.2                                          
 ##  [32] jquerylib_0.1.4                                    
-##  [33] evaluate_0.17                                      
+##  [33] evaluate_0.18                                      
 ##  [34] missMethyl_1.30.0                                  
 ##  [35] promises_1.2.0.1                                   
 ##  [36] fansi_1.0.3                                        
@@ -1790,7 +1790,7 @@ ggsave(&quot;figs/DMR_Manhattan_plot.png&quot;, DMR.man.plot,
 ##  [61] vroom_1.6.0                                        
 ##  [62] GenomicAlignments_1.32.1                           
 ##  [63] prettyunits_1.1.1                                  
-##  [64] mclust_5.4.10                                      
+##  [64] mclust_6.0.0                                       
 ##  [65] svglite_2.1.0                                      
 ##  [66] cluster_2.1.4                                      
 ##  [67] ExperimentHub_2.4.0                                
@@ -1861,62 +1861,63 @@ ggsave(&quot;figs/DMR_Manhattan_plot.png&quot;, DMR.man.plot,
 ## [132] sass_0.4.2                                         
 ## [133] VariantAnnotation_1.42.1                           
 ## [134] tools_4.2.1                                        
-## [135] parallel_4.2.1                                     
-## [136] rstudioapi_0.14                                    
-## [137] foreach_1.5.2                                      
-## [138] foreign_0.8-83                                     
-## [139] bsseq_1.32.0                                       
-## [140] gridExtra_2.3                                      
-## [141] farver_2.1.1                                       
-## [142] digest_0.6.30                                      
-## [143] BiocManager_1.30.19                                
-## [144] shiny_1.7.3                                        
-## [145] quadprog_1.5-8                                     
-## [146] Rcpp_1.0.9                                         
-## [147] GenomicRanges_1.48.0                               
-## [148] siggenes_1.70.0                                    
-## [149] broom_1.0.1                                        
-## [150] BiocVersion_3.15.2                                 
-## [151] later_1.3.0                                        
-## [152] httr_1.4.4                                         
-## [153] biovizBase_1.44.0                                  
-## [154] colorspace_2.0-3                                   
-## [155] rvest_1.0.3                                        
-## [156] XML_3.99-0.11                                      
-## [157] fs_1.5.2                                           
-## [158] splines_4.2.1                                      
-## [159] statmod_1.4.37                                     
-## [160] multtest_2.52.0                                    
-## [161] systemfonts_1.0.4                                  
-## [162] xtable_1.8-4                                       
-## [163] jsonlite_1.8.3                                     
-## [164] R6_2.5.1                                           
-## [165] Hmisc_4.7-1                                        
-## [166] pillar_1.8.1                                       
-## [167] htmltools_0.5.3                                    
-## [168] mime_0.12                                          
-## [169] glue_1.6.2                                         
-## [170] fastmap_1.1.0                                      
-## [171] BiocParallel_1.30.4                                
-## [172] interactiveDisplayBase_1.34.0                      
-## [173] beanplot_1.3.1                                     
-## [174] codetools_0.2-18                                   
-## [175] utf8_1.2.2                                         
-## [176] lattice_0.20-45                                    
-## [177] bslib_0.4.0                                        
-## [178] curl_4.3.3                                         
-## [179] gtools_3.9.3                                       
-## [180] openssl_2.0.4                                      
-## [181] interp_1.1-3                                       
-## [182] survival_3.4-0                                     
-## [183] rmarkdown_2.17                                     
-## [184] munsell_0.5.0                                      
-## [185] rhdf5_2.40.0                                       
-## [186] GenomeInfoDbData_1.2.8                             
-## [187] iterators_1.0.14                                   
-## [188] HDF5Array_1.24.2                                   
-## [189] haven_2.5.1                                        
-## [190] gtable_0.3.1</code></pre>
+## [135] timechange_0.1.1                                   
+## [136] parallel_4.2.1                                     
+## [137] rstudioapi_0.14                                    
+## [138] foreach_1.5.2                                      
+## [139] foreign_0.8-83                                     
+## [140] bsseq_1.32.0                                       
+## [141] gridExtra_2.3                                      
+## [142] farver_2.1.1                                       
+## [143] digest_0.6.30                                      
+## [144] BiocManager_1.30.19                                
+## [145] shiny_1.7.3                                        
+## [146] quadprog_1.5-8                                     
+## [147] Rcpp_1.0.9                                         
+## [148] GenomicRanges_1.48.0                               
+## [149] siggenes_1.70.0                                    
+## [150] broom_1.0.1                                        
+## [151] BiocVersion_3.15.2                                 
+## [152] later_1.3.0                                        
+## [153] httr_1.4.4                                         
+## [154] biovizBase_1.44.0                                  
+## [155] colorspace_2.0-3                                   
+## [156] rvest_1.0.3                                        
+## [157] XML_3.99-0.12                                      
+## [158] fs_1.5.2                                           
+## [159] splines_4.2.1                                      
+## [160] statmod_1.4.37                                     
+## [161] multtest_2.52.0                                    
+## [162] systemfonts_1.0.4                                  
+## [163] xtable_1.8-4                                       
+## [164] jsonlite_1.8.3                                     
+## [165] R6_2.5.1                                           
+## [166] Hmisc_4.7-1                                        
+## [167] pillar_1.8.1                                       
+## [168] htmltools_0.5.3                                    
+## [169] mime_0.12                                          
+## [170] glue_1.6.2                                         
+## [171] fastmap_1.1.0                                      
+## [172] BiocParallel_1.30.4                                
+## [173] interactiveDisplayBase_1.34.0                      
+## [174] beanplot_1.3.1                                     
+## [175] codetools_0.2-18                                   
+## [176] utf8_1.2.2                                         
+## [177] lattice_0.20-45                                    
+## [178] bslib_0.4.1                                        
+## [179] curl_4.3.3                                         
+## [180] gtools_3.9.3                                       
+## [181] openssl_2.0.4                                      
+## [182] interp_1.1-3                                       
+## [183] survival_3.4-0                                     
+## [184] rmarkdown_2.18                                     
+## [185] munsell_0.5.0                                      
+## [186] rhdf5_2.40.0                                       
+## [187] GenomeInfoDbData_1.2.8                             
+## [188] iterators_1.0.14                                   
+## [189] HDF5Array_1.24.2                                   
+## [190] haven_2.5.1                                        
+## [191] gtable_0.3.1</code></pre>
 <hr />
 </div>
 

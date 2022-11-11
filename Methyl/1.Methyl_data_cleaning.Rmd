@@ -51,7 +51,7 @@ read_csv("data_Methyl_raw/sample_sheet.csv") %>%
   kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
 
-```{r results=FALSE, message=FALSE}
+```{r results=FALSE, message=FALSE, warning=FALSE}
 RSTR <- champ.import(directory = "data_Methyl_raw/", arraytype = "EPIC")
   # Reformat sample sheet variables to factors as needed
   ## Required for SVD to process variables correctly
@@ -87,7 +87,7 @@ champ.QC(
 
 ## Data filtering
 
-```{r message=FALSE}
+```{r}
 RSTR.filter <- 
   champ.filter(
   # Call data
@@ -217,7 +217,7 @@ Detect if there is chip (*i.e.* slide) bias. *Note*: All variables of interest n
 ```{r message=FALSE}
 champ.SVD(
   # Call data
-  beta = RSTR.filter.norm,
+  beta = as.data.frame(RSTR.filter.norm), #Error when given as original matrix
   rgSet = RSTR.rgSet,
   pd = RSTR.filter$pd,
   
@@ -250,7 +250,7 @@ Verify that slide variation is corrected.
 ```{r results=FALSE, message=FALSE}
 champ.SVD(
   # Call data
-  beta = RSTR.filter.norm.combat,
+  beta = as.data.frame(RSTR.filter.norm.combat), #Again error if matrix
   rgSet = RSTR.rgSet,
   pd = RSTR.filter$pd,
   

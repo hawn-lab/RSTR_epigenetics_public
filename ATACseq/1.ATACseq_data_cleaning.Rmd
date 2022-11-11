@@ -249,7 +249,7 @@ read_tsv("results/results_cleaning/clean.summary.align.tsv") %>%
 Load raw summary tables, format, and save as `results_cleaning/clean.summary.*`
 
 ```{r bam.summ, echo=FALSE, message=FALSE, warning=FALSE}
-bam.summ <- read_table("results/results_cleaning/bam.metrics.tsv",
+bam.summ <- read_tsv("results/results_cleaning/bam.metrics.tsv",
                        col_names=FALSE) %>% 
   filter(grepl("^results/bam/", X1) |
          grepl("^[0-9]", X1)) %>% 
@@ -260,11 +260,10 @@ bam.summ <- read_table("results/results_cleaning/bam.metrics.tsv",
   select(Sample_Name, 1:27) %>% 
   drop_na(Sample_Name)
   
-bam.names <- read_table("results/results_cleaning/bam.metrics.tsv",
+bam.names <- read_tsv("results/results_cleaning/bam.metrics.tsv",
                         col_names=FALSE)[7,] %>% 
   separate(X1, into=as.character(c(1:27)), sep="\\s")
   
-
 colnames(bam.summ) <- c("Sample_Name", bam.names[1,])
 
 full_join(aligned, bam.summ, by = "Sample_Name") %>% 
@@ -700,7 +699,7 @@ count.atac(peaks=unique.peaks.nonblack.M.df[,-1], bam=bam.files,
 ```
 
 ```{r warning=FALSE, echo=FALSE}
-Nfree.counts.summ <- read_table("results/results_cleaning/Rsubread.stdout.txt", 
+Nfree.counts.summ <- read_tsv("results/results_cleaning/Rsubread.stdout.txt", 
                    col_names = FALSE) %>% 
   filter(grepl("Process", X1) | 
          grepl("Total alignments", X1) |
