@@ -124,7 +124,7 @@ voom.count.ave <- voomQW.Nfree.abund.norm.kin %>%
 DAR.results <-  model.final %>% 
   #Variable of interest
   dplyr::filter(variable == "Sample_Group") %>% 
-  dplyr::select(peak, FDR) %>% 
+  dplyr::select(peak, estimate, FDR) %>% 
 
   #Add annotations
   left_join(peaks.annot.df, by = "peak") %>% 
@@ -151,7 +151,7 @@ DAR.results <-  model.final %>%
     mutate(CHR = gsub("chr","", seqnames)) %>% 
   #Reorder
   dplyr::select(peak, CHR, start, end, annotation, annotation.group,
-                hgnc_symbol, distanceToTSS, LTBI.voom.mean, RSTR.voom.mean,
+                hgnc_symbol, distanceToTSS, LTBI.voom.mean, RSTR.voom.mean, estimate,
                 FDR) %>% 
   dplyr::rename(peak_start=start, peak_end=end, 
                 DAR_genes=hgnc_symbol, DAR_FDR=FDR)
