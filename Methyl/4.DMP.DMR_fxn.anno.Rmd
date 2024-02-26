@@ -175,16 +175,16 @@ Significant enrichments, FDR $\leq$ 0.1 and > 1 gene overlapping with term.
 enrich.results <- bind_rows(enrichH, enrichC5)
   
 enrich.results %>% 
-  filter(FDR<=0.2 & group_in_pathway>1) %>% 
+  filter(FDR<=0.2 & `k/K`>0.04) %>% 
   dplyr::select(gs_cat, group, size_group,
                 pathway, size_pathway, group_in_pathway, 
-                genes, FDR) %>% 
-  arrange(group, gs_cat, FDR) %>%
+                genes, `k/K`, FDR) %>% 
+  arrange(`k/K`,group, gs_cat, FDR) %>%
 
   kable(col.names = c("Gene set", "Group", "Genes in group",
                       "Description", 
                       "Genes in term","Genes overlap", "Genes",
-                      "FDR")) %>% 
+                      "k/K","FDR")) %>% 
   kable_styling(bootstrap_options = "striped", full_width = FALSE) %>% 
   collapse_rows(1:3, valign="top")
 ```
@@ -209,8 +209,9 @@ goterms <- as.data.frame(Term(GOTERM)) %>%
   dplyr::rename(GO_path = `Term(GOTERM)`)
 
 goterms.OI <- enrich.results %>% 
-  filter(FDR<=0.2 & group_in_pathway>1 & gs_cat == "C5") %>% 
+  filter(FDR<=0.2 & `k/K`>0.04 & gs_cat == "C5") %>% 
   #Fix names to match GO db
+  ##Some of these don't matter in this version but keeping in case changes occur
   mutate(GO_path = gsub("GOBP_","",pathway),
          GO_path = gsub("_"," ",GO_path),
          GO_path = tolower(GO_path),
@@ -257,20 +258,16 @@ df <- cbind(as.data.frame(x$points),
   #recode small groups
   mutate(GO_group = recode(parentTerm,
                            "biological process involved in intraspecies interaction between organisms"="Other",
-                           "negative regulation of hippo signaling"="Hippo\nsignaling",
-                           "regulation of cellular component size"="Cellular\ncomponent size",
-                           "high-density lipoprotein particle remodeling"="HDL\nremodeling",
+                           "negative regulation of hippo signaling"="Hippo signaling",
+                           "high-density lipoprotein particle remodeling"="HDL remodeling",
                            "lipid export from cell"="Lipid export",
                            "rhythmic behavior"="Other",
                            "cochlea development"="Other",
-                           "regulation of fatty acid biosynthetic process"="Fatty acid\nbiosynthesis",
-                           "positive regulation of cell projection organization"="Cell projection\norganization"))
+                           "regulation of fatty acid biosynthetic process"="Fatty acid\nbiosynthesis"))
 
-col.vec <- c("Cell projection\norganization"="#5D3A9B",
-             "Cellular\ncomponent size"="#009E73",
-             "Fatty acid\nbiosynthesis"="#56B4E9",
-             "HDL\nremodeling"="#E69F00",
-             "Hippo\nsignaling"="#CC79A7",
+col.vec <- c("Fatty acid\nbiosynthesis"="#56B4E9",
+             "HDL remodeling"="#E69F00",
+             "Hippo signaling"="#CC79A7",
              "Lipid export"="#D55E00", 
              "Other"="grey60",
              "none"="grey90")
@@ -278,20 +275,20 @@ col.vec <- c("Cell projection\norganization"="#5D3A9B",
 df_lab <- df %>% 
   group_by(GO_group) %>% 
   mutate(V1=mean(V1),V2=mean(V2),
-         V1 = case_when(GO_group == "Hippo\nsignaling" ~ V1-0.07,
-                         GO_group == "HDL\nremodeling" ~ V1+0.03,
+         V1 = case_when(GO_group == "Hippo signaling" ~ V1+0.15,
+                         GO_group == "HDL remodeling" ~ V1-0.13,
                          TRUE ~ V1),
-         V2 = ifelse(!GO_group %in% c("Other"),
-                     V2+0.07, V2-0.07)) #%>% 
-  # filter(GO_group != "Other") %>% 
-  # bind_rows(filter(df, GO_group == "Other"))
+         V2 = case_when(GO_group == "Other" ~ V2+0.04,
+                        GO_group == "Fatty acid\nbiosynthesis" ~ V2-0.05,
+                        GO_group == "Lipid export" ~ V2-0.03,
+                        TRUE ~ V2))
 
 p <- df %>% 
   arrange(desc(GO_group)) %>% 
   ggplot(aes(x=V1, y=V2, color=GO_group)) +
   geom_point(aes(size=`k/K`*100), alpha=.5) +
   scale_color_discrete(guide="none") +
-  scale_size_continuous(range=c(1, 15)) +
+  scale_size_continuous(range=c(5, 15), breaks = c(5,10,15)) +
   labs(size="Percent enrichment") +
   theme_bw() +
   theme(axis.text   = element_blank(),
