@@ -14,7 +14,7 @@ DMP <- read_csv("Methyl/results/RSTR.DMP.results.csv.gz",
   filter(FDR <= 0.2) %>% 
   rename(site=probeID) %>% 
   mutate(annotation.group = ifelse(grepl("TSS",feature), "TSS1500",
-                                   ifelse(feature == "Body", "body",
+                                   ifelse(feature == "Body", "intron",
                                           ifelse(feature %in% 
                                                    c("ExonBnd","1stExon"), "exon",
                                                  feature)))) %>%
@@ -29,20 +29,24 @@ DMR <- read_csv("Methyl/results/RSTR.DMR.results.cpgs.csv.gz",
   mutate(annotation.group = ifelse(is.na(DMR_genes), "IGR", annotation.group)) %>% 
   distinct(site, annotation.group) %>% 
   mutate(group="DMR") %>% 
-  #collapse mulit anno
+  #collapse multi anno
+  mutate(annotation.group = gsub("body","intron",annotation.group)) %>% 
   group_by(site,group) %>% 
-  summarise(annotation.group = paste(unique(annotation.group), collapse=" & "),
+  summarise(annotation.group = paste(sort(unique(annotation.group), decreasing=TRUE), collapse=" & "),
             .groups="drop") %>% 
-  mutate(annotation.group = ifelse(grepl("TSS",annotation.group),"TSS1500",
-                                   ifelse(grepl("body",annotation.group),"body",
-                                          annotation.group)))
+  mutate(annotation.group = case_when(grepl("TSS",annotation.group)~"TSS1500",
+                                      grepl("exon",annotation.group)~"exon",
+                                      grepl("5'UTR",annotation.group)~"5'UTR",
+                                      grepl("3'UTR",annotation.group)~"3'UTR",
+                                      grepl("body",annotation.group)~"intron",
+                                      TRUE~annotation.group))
 
 #### Combine ####
 dat <- bind_rows(DAR,DMP,DMR) %>%
   count(group, annotation.group) %>% 
   mutate(annotation.group = factor(annotation.group, 
-                                   levels=c("TSS1500","exon","body","intron",
-                                            "5'UTR","3'UTR","exon & 5'UTR","IGR")))
+                                   levels=c("TSS1500","exon","5'UTR","3'UTR",
+                                            "intron","IGR")))
 #total sites
 dat.total <- dat %>% 
   group_by(group) %>% 

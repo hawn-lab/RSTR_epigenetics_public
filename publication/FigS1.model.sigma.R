@@ -29,63 +29,46 @@ A.fit <- kinship_final$lmerel.fit %>%
   bind_rows(mutate(base$lm.fit, model = "~ RSTR")) %>% 
   bind_rows(mutate(kinship$lmerel.fit, model = "~ RSTR + kinship")) %>% 
   rename(epigen=gene)
- 
+
 #### Kinship ####
 M.sigma <- M.fit %>% 
-   distinct(epigen, model, sigma) %>% 
-   pivot_wider(names_from = model, values_from = sigma) %>% 
-   mutate(group = "Methylation")
+  distinct(epigen, model, sigma) %>% 
+  pivot_wider(names_from = model, values_from = sigma) %>% 
+  mutate(kin = `~ RSTR + kinship`-`~ RSTR`, 
+         cov = `~ RSTR + age + sex + kinship`-`~ RSTR + kinship`) %>% 
+  mutate(group = "Methylation")
 
 A.sigma <- A.fit %>% 
-   distinct(epigen, model, sigma) %>% 
-   pivot_wider(names_from = model, values_from = sigma) %>% 
-   mutate(group = "Accessibility")
+  distinct(epigen, model, sigma) %>% 
+  pivot_wider(names_from = model, values_from = sigma) %>% 
+  mutate(kin = `~ RSTR + kinship`-`~ RSTR`, 
+         cov = `~ RSTR + age + sex + kinship`-`~ RSTR + kinship`) %>% 
+  mutate(group = "Accessibility")
 
 plot1 <- bind_rows(M.sigma,A.sigma) %>% 
-  mutate(best = ifelse(`~ RSTR + kinship`<`~ RSTR`, "~ RSTR + kinship",
-                       "~ RSTR"),
-         best = factor(best, 
-                       levels=c("~ RSTR + age + sex + kinship",
-                                "~ RSTR + kinship",
-                                "~ RSTR"))) %>% 
-  
-  ggplot(aes(y=`~ RSTR`, x=`~ RSTR + kinship`, color=best)) +
-  geom_point(alpha=0.5) + 
-  facet_wrap(~group) +
-  coord_fixed() +
-  geom_abline(slope=1, intercept = 0) +
+  ggplot(aes(y=kin, x=group)) +
+  geom_violin(fill = "grey70", color = NA, adjust=1000) +
+  geom_hline(yintercept = 0, lty="dashed") +
+  ylim(-3.5,3.5) +
   theme_classic() +
-  labs(y="~ RSTR", x="~ RSTR + kinship",
-       color="Best fit model") +
-  theme(legend.position = "none") +
-  scale_color_discrete(drop=FALSE)
+  labs(y="Change in sigma\n<--- Better fit with kinship   Better fit without kinship --->", 
+       x="") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-plot1
+# plot1
 
 #### Age +sex ####
-plot2 <- bind_rows(M.sigma,A.sigma) %>% 
-  mutate(best = ifelse(`~ RSTR + age + sex + kinship`<`~ RSTR + kinship`,
-                       "~ RSTR + age + sex + kinship",
-                       "~ RSTR + kinship"),
-         best = factor(best, 
-                       levels=c("~ RSTR + age + sex + kinship",
-                                "~ RSTR + kinship",
-                                "~ RSTR"))) %>% 
-  
-  ggplot(aes(y=`~ RSTR + age + sex + kinship`, x=`~ RSTR + kinship`, color=best)) +
-  geom_point(alpha=0.5) + 
-  facet_wrap(~group) +
-  coord_fixed() +
-  geom_abline(slope=1, intercept = 0) +
+plot2 <-  bind_rows(M.sigma,A.sigma) %>% 
+  ggplot(aes(y=cov, x=group)) +
+  geom_violin(fill = "grey70", color = NA, adjust=1000) +
+  geom_hline(yintercept = 0, lty="dashed") +
+  ylim(-3.5,3.5) +
   theme_classic() +
-  labs(y="~ RSTR + age + sex + kinship", 
-       x="~ RSTR + kinship",
-       color="Best fit model") +
-  theme(legend.position = "bottom",
-        legend.direction = "vertical") +
-  scale_color_discrete(drop=FALSE)
+  labs(y="Change in sigma\n<--- Better fit with age + sex   Better fit without age + sex --->", 
+       x="") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-plot2
+# plot2
 
 #### Venn data ####
 #Load all model results
@@ -127,17 +110,15 @@ for (dat in c("A.signif","M.signif")){
 }
 
 #### Save plot ####
-layout <- "
-AC
-BD
-"
-plot_all <- plot1 + plot2 + venn.ls$A.signif + venn.ls$M.signif + 
-  plot_layout(design = layout) +
+plot_AB <- plot1 + plot2 + 
   plot_annotation(tag_levels = "A")
-# plot_all
+plot_CD <- venn.ls$A.signif + venn.ls$M.signif + 
+  plot_annotation(tag_levels = list(c('C', 'D'), '1'))
 
-ggsave(plot_all, filename="publication/FigS1.model.fit.png",
-       height=8, width=6)
+ggsave(plot_AB, filename="publication/FigS1AB.model.fit.png",
+       height=5, width=3)
+ggsave(plot_CD, filename="publication/FigS1CD.model.fit.png",
+       height=5, width=5)
 
 #### best fit numbers ####
 bind_rows(M.sigma,A.sigma) %>% 

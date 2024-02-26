@@ -7,7 +7,7 @@ DMP <- read_csv("Methyl/results/RSTR.DMP.results.csv.gz")
 
 #### DMR ####
 #List DMR of interest
-genes.OI <- c("APOC3","PLA2G3","KCNQ1")
+genes.OI <- c("APOC3","PLA2G3","KCNQ1", "SHANK2", "CIT")
 
 DMR_all <- read_csv("Methyl/results/RSTR.DMR.results.cpgs.csv.gz") 
 DMR.OI2 <- DMR_all %>% 
@@ -21,14 +21,14 @@ DMR.OI2 <- DMR_all %>%
 #Get reference genome
 ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl", 
                    host = "https://useast.ensembl.org")
-searchDatasets(mart = ensembl, pattern = "hsapiens")
+# searchDatasets(mart = ensembl, pattern = "hsapiens")
 
 
 gene.POS <- getBM(attributes = c('hgnc_symbol', 'ensembl_gene_id',
                                  'entrezgene_id',
                                  'chromosome_name',
-                                 'start_position','end_position',
-                                 'strand'),
+                                 'strand',
+                                 "start_position", "end_position"),
                   mart = ensembl) %>% 
   #Rename
   dplyr::rename(CHR=chromosome_name) %>% 
@@ -37,7 +37,7 @@ gene.POS <- getBM(attributes = c('hgnc_symbol', 'ensembl_gene_id',
   filter(!grepl("^CHR", CHR))
 
 #DMRs in order
-DMR.vec <- c("DMR_49","DMR_25","DMR_61")
+DMR.vec <- c("DMR_25","DMR_61","DMR_49","DMR_62","DMR_20","DMR_59")
 
 #### Methyl plots ####
 plot.ls <- list()
@@ -52,28 +52,50 @@ for(d in DMR.vec) {
   
   DMR_surround <- DMP %>%
     filter(probeID %in% DMR_sub$probeID) %>%
-    dplyr::select(probeID, CHR, start_hg38,
+    dplyr::select(probeID, CHR, start_hg38, FDR,
                   RSTR.M.ave, LTBI.M.ave, RSTR.M.sd, LTBI.M.sd) %>%
+    #label for DMP
+    mutate(FDR=ifelse(FDR<0.2,"*",NA)) %>% 
+    mutate(FC = ifelse(RSTR.M.ave > LTBI.M.ave, "RSTR","LTBI")) %>% 
     pivot_longer(RSTR.M.ave:LTBI.M.sd) %>% 
+    #keep only 1 label per site
+    rowwise() %>% 
+    mutate(FDR = ifelse(grepl(FC, name), FDR, NA)) %>% 
     separate(name, into=c("group","measure","name"), sep="[.]") %>% 
     pivot_wider() 
+  
   #### plot ####
-  DMR_M_plot <- DMR_surround %>% 
+  plot.title <- paste0(unique(DMR_sub$DMR), " (",
+         paste(unique(DMR_sub$annotation.group),
+               collapse="/"), ")")
+  plot.title <- gsub("body","intron", plot.title)
+  
+  DMR_M_plot <- 
+    DMR_surround %>% 
     
     ggplot(aes(x=start_hg38, y=ave)) +
-    geom_errorbar(aes(ymin=ave-sd, ymax=ave+sd, color=group, 
-                      width=(max(start_hg38)-min(start_hg38))/50)) +
-    geom_point(aes(color=group), size=2) +
+    geom_ribbon(aes(ymin = ave-sd, ymax = ave+sd, fill = group),
+                alpha = 0.3) +
+    geom_point(size=1, aes(color = group)) +
+    geom_line(aes(color = group)) +
+    #signif DMP
+    geom_text(aes(label=FDR, y = ave+sd+0.1), size=10, color="black") +
     theme_bw() +
-    labs(x="", y="", title = unique(DMR_sub$DMR)) +
+    labs(x="", y="", title = plot.title) +
     scale_color_manual("", labels=c("LTBI.M.ave"="LTBI", 
                                     "RSTR.M.ave"="RSTR"),
                        values = c("#f1a340","#998ec3")) +
+    scale_fill_manual("", labels=c("LTBI.M.ave"="LTBI", 
+                                   "RSTR.M.ave"="RSTR"),
+                      values = c("#f1a340","#998ec3")) +
     theme(panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank())
+          panel.grid.minor = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust = 1))
+  
   # DMR_M_plot
   #Remove legend except last plot
-  if(d != DMR.vec[length(DMR.vec)]){
+  if(d != DMR.vec[3] &
+     d != DMR.vec[length(DMR.vec)]){
     DMR_M_plot <- DMR_M_plot +
       theme(legend.position = "none")
   }
@@ -81,6 +103,10 @@ for(d in DMR.vec) {
   if(d == DMR.vec[1]){
     DMR_M_plot <- DMR_M_plot +
       labs(tag="A", y="Probe log2 M value")
+  }
+  if(d == DMR.vec[4]){
+    DMR_M_plot <- DMR_M_plot +
+      labs(tag="C", y="Probe log2 M value")
   }
   ##### Combo #####
   plot.ls[[d]] <- DMR_M_plot
@@ -90,10 +116,14 @@ for(d in DMR.vec) {
 #### Gene plots ####
 plot.ls2 <- list()
 
-for(d in DMR.vec) {
+for(d in DMR.vec[-6]) {
   print(d)
+  #get second DMR for SHANK2
+  if(d == "DMR_20"){
+    d <- c(d, "DMR_59")
+  }
   #Get DMR info
-  DMR_sub <- DMR.OI2 %>% dplyr::filter(DMR==d) %>% 
+  DMR_sub <- DMR.OI2 %>% dplyr::filter(DMR %in% d) %>% 
     mutate(DMR = gsub("_"," ",DMR)) %>% 
     distinct(DMR, CHR, DMR_start, DMR_end, DMR_genes)
   
@@ -106,14 +136,16 @@ for(d in DMR.vec) {
   x_lab <- paste("Chromosome", unique(DMR_sub$CHR), "position")
   
   #set DMR label position
-  if(gene_sub$strand == 1){
+  if(unique(gene_sub$strand) == 1){
     gene_sub_format <- gene_sub %>% 
+      filter(CHR.x==CHR.y) %>% 
       mutate(start = start_position,
              end = end_position,
              g_lab = DMR_start,
              g_hjust = -0.2)
   } else{
     gene_sub_format <- gene_sub %>% 
+      filter(CHR.x==CHR.y) %>% 
       mutate(end = start_position,
              start = end_position,
              g_lab = DMR_end,
@@ -122,18 +154,17 @@ for(d in DMR.vec) {
   
   
   ##### Gene plot #####
-  gene_plot <- gene_sub_format %>% 
+  gene_plot <- gene_sub_format %>%
     ggplot() +
     #DMR
     geom_rect(aes(xmin = DMR_start, xmax = DMR_end, ymin = 0.9, ymax = 1.1),
-              fill="grey70") +
-    # geom_text(aes(x=g_lab, label=DMR, hjust=g_hjust), y=0.95) +
+              fill="black", color="black") +
     #Gene
     geom_segment(aes(x=start, xend=end), 
-                 y=1, yend=1, color="black", size=2,
+                 y=1, yend=1, color="grey70", size=2,
                  arrow=arrow(length = unit(0.2, "npc"))) +
     geom_text(aes(x=(start+end)/2, label = hgnc_symbol),
-              y=1, hjust=0.5, vjust=-1) +
+              y=0.95, hjust=0.5, vjust=-1) +
     
     theme_classic() +
     lims(y=c(0.9,1.1)) +
@@ -142,102 +173,130 @@ for(d in DMR.vec) {
           plot.margin = unit(c(0,1,0,0.5), "cm"),
           axis.title.y=element_blank(),
           axis.text.y=element_blank(),
-          axis.ticks.y=element_blank())
+          axis.ticks.y=element_blank()) +
+    scale_x_continuous(breaks=c(gene_sub_format$start_position, 
+                                gene_sub_format$end_position))
+  
   #Add tag to first plot
-  if(d == DMR.vec[1]){
+  if(any(d == DMR.vec[1])){
     gene_plot <- gene_plot +
       labs(tag="B")
+  }
+  if(any(d == DMR.vec[4])){
+    gene_plot <- gene_plot +
+      labs(tag="D")
   }
   # gene_plot
   
   ##### Save #####
-  plot.ls2[[d]] <- gene_plot
+  plot.ls2[[d[1]]] <- gene_plot
 }
 
-#### Expression correlation ####
-attach("Methyl/data_Methyl_clean/eQTM.data.RData")
+#### Expression  ####
+load("RNAseq/RSTR_RNAseq_data_for_eQTM.RData")
 
-corr.dat <- DMR.M.overlap %>% 
-  filter(DMR %in% DMR.vec) %>% 
-  inner_join(rna.overlap) %>% 
-  inner_join(distinct(DMR.OI, DMR, DMR_genes),
-             by=c("DMR","gene"="DMR_genes")) %>% 
-  left_join(dplyr::select(meta.overlap,-Sample_Name)) %>%
-  mutate(DMR = factor(gsub("_"," ",DMR), levels=gsub("_"," ",DMR.vec)))
+geneOI <- c("APOC3", "PLA2G3", "KCNQ1", #lipid/hdl
+            "CIT","SHANK2")             #hippo
 
-corr.dat.summ <- corr.dat %>% 
-  group_by(DMR) %>% 
-  summarise(minM=max(methyl)-0.1,
-            minE=min(expression),
-            .groups = "drop") %>%
-  full_join(distinct(corr.dat, DMR, condition)) %>% 
-  mutate(minE = ifelse(condition=="TB",minE-0.2, minE))
+# Lmerel
+library(kimma)
+dat.select <- dat.combined.voom[geneOI,]
+kin <- read_csv("data_refs/kinship_Hawn_all.csv")
 
-corr.result <- read_csv("Methyl/results/eQTM_correlation.csv") %>% 
-  filter(DMR %in% DMR.vec) %>% 
-  mutate(DMR = factor(gsub("_"," ",DMR), levels=gsub("_"," ",DMR.vec))) %>% 
-  mutate(lab = paste0("R = ",round(R,2),", p = ",round(pval,2))) %>% 
-  full_join(corr.dat.summ)
+overlap <- intersect(kin$rowname, dat.select$targets$FULLIDNO)
 
-plot.ls3 <- list()
-for(d in DMR.vec){
-  corr.sub <- corr.dat %>% 
-    filter(DMR == gsub("_"," ", d))
-  corr.result.sub <- corr.result %>% 
-    filter(DMR == gsub("_"," ", d))
-  
-  corr.plot <- corr.sub %>% 
-    ggplot() +
-    aes(x = methyl, y=expression, color = condition) +
-    geom_point(size=2) +
-    geom_smooth(method = "lm", aes(fill=condition), formula = y ~ x,
-                show.legend = FALSE, alpha=0.1, se=FALSE, size=0.5) +
-    #Correlation
-    geom_text(data=corr.result.sub,
-              aes(label=lab, x=minM, y=minE), show.legend = FALSE) +
-    theme_bw() +
-    #Recolor
-    scale_color_manual("", labels=c("MEDIA"="Media", 
-                                    "TB"="+Mtb"),
-                       values = c("#0571b0","#ca0020")) +
-    scale_fill_manual("", labels=c("MEDIA"="Media", 
-                                   "TB"="+Mtb"),
-                      values = c("#0571b0","#ca0020")) +
-    #labels etc
-    labs(x=paste(corr.result.sub$DMR, "mean log2 M value", sep="\n"), 
-         y=paste(corr.result.sub$gene,"log2 gene expression", sep="\n")) +
-    theme(plot.margin = unit(c(0,0,0,0.5), "cm"),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank())
-  
-  #Remove legend except last plot
-  if(d != DMR.vec[length(DMR.vec)]){
-    corr.plot <- corr.plot +
-      theme(legend.position = "none")
-  }
-  #Add tag to first plot
-  if(d == DMR.vec[1]){
-    corr.plot <- corr.plot +
-      labs(tag="C")
-  }
-  plot.ls3[[d]] <- corr.plot
-}
+kin <- kin %>% 
+  filter(rowname %in% overlap) %>% 
+  dplyr::select(rowname, all_of(overlap)) %>% 
+  arrange(rowname) %>% 
+  column_to_rownames()
+
+m <- kmFit(dat=dat.select, kin=kin, patientID = "FULLIDNO",
+           model = "~condition*Sample_Group+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+experiment+(1|FULLIDNO)",
+           run_lmerel = TRUE, 
+           run_contrast = TRUE, contrast_var = "condition:Sample_Group")
+
+#No signif interaction or RSTR main
+summarize_kmFit(m$lmerel, fdr_cutoff = 0.2)
+
+#Significant Mtb genes
+fdr <- m$lmerel %>%
+  filter(variable == "condition") %>% 
+  filter(FDR < 0.2) %>% 
+  mutate(FDR = signif(FDR, digits=2))
+
+dat <- as.data.frame(dat.combined.voom$E) %>% 
+  rownames_to_column("geneName") %>% 
+  filter(geneName %in% geneOI) %>% 
+  pivot_longer(-geneName, names_to = "libID") %>% 
+  left_join(dat.combined.voom$targets, by="libID") %>% 
+  mutate(condition = fct_recode(condition, "Media"="MEDIA",
+                                "+Mtb"="TB")) %>% 
+  mutate(geneName = factor(geneName, levels=geneOI)) %>% 
+  #add FDR 
+  left_join(fdr, by=c("geneName"="gene")) %>% 
+  mutate(facet.lab = paste(geneName, "\nFDR = ", FDR)) %>% 
+  mutate(facet.lab2 = case_when(
+    geneName %in% c("APOC3", "PLA2G3", "KCNQ1")~"Fatty acids, lipids, HDL",
+    geneName %in% c("SHANK2", "CIT")~"Hippo",
+    TRUE~"Other"),
+    geneName = factor(geneName, levels=c("APOC3", "PLA2G3", "KCNQ1",
+                                         "CIT", "SHANK2" ))) %>% 
+  arrange(facet.lab2, geneName)
+
+plot3a <- dat %>% 
+  filter(geneName %in%c("APOC3", "PLA2G3", "KCNQ1")) %>% 
+  ggplot(aes(x=condition, y=value)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width=0.2, aes(color=Sample_Group)) +
+  # stat_pvalue_manual(stat.dat, label="symbol") +
+  theme_classic() +
+  labs(x="", y="Log2 normalized expression",
+       tag="E") +
+  scale_color_manual("", values = c("#f1a340","#998ec3")) +
+  facet_wrap(~facet.lab, ncol=5, scales="free") +
+  theme(legend.position = "none")
+
+plot3b <- dat %>% 
+  filter(geneName %in%c("CIT","SHANK2")) %>% 
+  ggplot(aes(x=condition, y=value)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width=0.2, aes(color=Sample_Group)) +
+  # stat_pvalue_manual(stat.dat, label="symbol") +
+  theme_classic() +
+  labs(x="", y="Log2 normalized expression",
+       tag="F") +
+  scale_color_manual("", values = c("#f1a340","#998ec3")) +
+  facet_wrap(~facet.lab, ncol=5, scales="free")
 
 #### Save ####
-p_all <- wrap_plots(plot.ls) / wrap_plots(plot.ls2) / wrap_plots(plot.ls3) +
-  plot_layout(heights = c(8,2,8))
+layout <- "
+AABBCC
+DDEEFF
+GGHHII
+JJKKKK
+LLLMMM
+"
+p_all <- plot.ls[[1]] + plot.ls[[2]] + plot.ls[[3]] +
+  plot.ls2[[1]] + plot.ls2[[2]] + plot.ls2[[3]] +
+  plot.ls[[4]] + plot.ls[[5]] + plot.ls[[6]] +
+  plot.ls2[[4]] + plot.ls2[[5]] +
+  plot3a + plot3b +
+  plot_layout(heights = c(3,0.7,3,0.7,3), design = layout)
 # p_all
 
-ggsave(p_all, filename = "publication/Fig3.DMR.png", width=18, height=9)
-ggsave(p_all, filename = "publication/Fig3.DMR.pdf", width=18, height=9)
+ggsave(p_all, filename = "publication/Fig3.DMR.png", width=10, height=10)
+ggsave(p_all, filename = "publication/Fig3.DMR.pdf", width=10, height=10)
 
-#### DMR probes are DMP? ####
-DMP.probe <- DMP %>% 
-  filter(FDR <= 0.2)  %>% 
-  pull(probeID) %>% unique()
 
-is.dmp <- DMR_all %>% 
-  mutate(DMP = ifelse(probeID %in% DMP.probe, "Y","N")) %>% 
-  # select(DMR,probeID,DMR_genes,DMP) %>% 
-  count(DMR,DMR_genes,DMP) %>% 
-  pivot_wider(names_from = DMP, values_from = n)
+#### Check DMP in DMR ####
+DMP.signif <- DMP %>% 
+  filter(FDR<0.2)
+DMR_all %>% 
+  mutate(DMP = ifelse(probeID %in% DMP.signif$probeID, "Y","N")) %>% 
+  group_by(DMR) %>% 
+  count(DMP) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = DMP, values_from = n) %>% 
+  filter(!is.na(Y)) %>% 
+  nrow()
