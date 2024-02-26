@@ -1,0 +1,246 @@
+---
+title: "Methylation linked to MDM-IFN gene expression"
+subtitle: "RSTR vs. LTBI, full dataset"
+author: "Kim Dill-McFarland, kadm@uw.edu"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+date: "version `r format(Sys.time(), '%B %d, %Y')`"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+# library(limma)
+library(SEARchways)
+library(patchwork)
+```
+
+
+# Data
+
+```{r}
+load("results/enrichment/RSTR.DMPR.enrichment.RData")
+load("../RNAseq/kimma_IFN.RData")
+```
+
+```{r}
+signif.enrich <- enrich.results %>% 
+  filter(FDR <= 0.2 & `k/K`>0.04) %>% 
+  #remove other group
+  mutate(GO_group = case_when(grepl("INTRASPECIES|RHYTHMIC|COCHLEA",pathway) ~ "Other",
+                              grepl("HIPPO", pathway) ~ "Hippo signaling",
+                              grepl("LIPID_EXPORT",pathway) ~ "Lipid export",
+                              grepl("LIPOPROTEIN|PROTEIN_CONTAINING_COMPLEX|LIPID_COMPLEX",pathway) ~ "HDL remodeling",
+                              grepl("FATTY",pathway) ~ "Fatty acid biosynthesis")) %>% 
+  filter(GO_group != "Other") %>% 
+  select(GO_group, pathway, genes) %>% 
+  rename(methyl_genes = genes)
+```
+
+# IFN specific genes
+
+```{r}
+deg.ls <- list()
+for(c in unique(MDM.IFN_kimma_pval$lme.contrast$contrast_lvl)){
+  deg.ls[[c]] <- MDM.IFN_kimma_pval$lme.contrast %>% 
+    filter(contrast_ref == "untreated" & contrast_lvl == c) %>% 
+    filter(FDR < 0.05) %>% 
+    pull(gene) %>% unique()
+}
+```
+
+```{r}
+#skip IFNL as list is 0
+enrich_IFN_c5 <- BIGprofiler(gene_list = deg.ls[-5], 
+                           category = "C5", subcategory = "GO:BP",
+                           ID = "ENSEMBL")
+# enrich_IFN_c5 <- enrich_IFN_c5_005
+#filter terms 
+enrich_IFN_c5_signif <- enrich_IFN_c5 %>% 
+  inner_join(signif.enrich) %>% 
+  #Recalc FDR
+  group_by(group) %>% 
+  mutate(FDR = p.adjust(pval, "BH")) %>% 
+  ungroup()
+```
+
+```{r}
+enrich_format <- enrich_IFN_c5_signif  %>% 
+  mutate(signif.col = case_when(pval < 0.05 ~ "P < 0.05",
+                                pval < 0.1 ~ "P < 0.1",
+                                pval < 0.2 ~ "P < 0.2",
+                                TRUE  ~ "NS")) %>% 
+  mutate(signif.col = fct_relevel(signif.col, "NS", after=Inf)) %>% 
+  mutate(group = factor(group, levels = c("IFNg", "IFNe", "IFNb", "IFNA8"))) %>% 
+  mutate(pathway = gsub("GOBP_","",pathway),
+         pathway = gsub("_"," ",pathway),
+         pathway = tolower(pathway),
+         pathway = gsub("high density","high-density",pathway),
+         pathway = gsub("protein containing","protein-containing",pathway),
+         pathway = gsub("protein lipid","protein-lipid",pathway),
+         pathway = gsub("hippo","Hippo",pathway))
+
+plot.ls <- list()
+
+for(g in unique(sort(enrich_IFN_c5_signif$GO_group))){
+  plot.temp <- enrich_format %>% 
+    filter(GO_group ==g) %>% 
+    
+    ggplot() +
+    aes(x=group,y=`k/K`, fill=signif.col) +
+    geom_segment(aes(group, xend = group, y = 0, yend = `k/K`)) +
+    geom_point(shape=21, size=3, stroke=1) +
+    facet_grid(GO_group~pathway, scales = "free") +
+    coord_flip() +
+    scale_fill_manual(values = c("P < 0.05"="#D55E00","P < 0.1"="#E69F00",
+                                 "P < 0.2"="#F0E442","NS"="grey80"),
+                      drop = FALSE) +
+    theme_classic() +
+    lims(y=c(0,0.7)) +
+    labs(fill="Significance", x="MDM stimulation",
+         y="Proportion enriched (k/K)") +
+    theme(panel.border = element_rect(colour = "black", fill=NA))
+  
+  if(g != "Hippo signaling") { plot.temp <- plot.temp + theme(legend.position = "none") }
+  
+  plot.ls[[g]] <- plot.temp
+}
+
+wrap_plots(plot.ls[c(1,2,4,3)]) +
+  plot_layout(widths=c(1,3))
+```
+
+Check overlap of genes in enrichments
+
+```{r}
+attach("../RNAseq/MDM-IFN_voom.RData")
+methyl.genes <- signif.enrich %>% 
+  unnest(methyl_genes) %>% 
+  pull(methyl_genes) %>% unique()
+
+enrich_IFN_c5_signif %>% 
+  select(group, pathway, genes) %>% 
+  unnest(genes) %>% 
+  left_join(dat.voom$genes, by=c("genes"="ensembl_gene_id")) %>% 
+  unnest(symbol) %>% 
+  filter(symbol %in% methyl.genes) %>% 
+  View()
+```
+
+# GSEA
+
+```{r}
+gsea.ls <- list()
+for(c in unique(MDM.IFN_kimma_pval$lme.contrast$contrast_lvl)){
+   gsea.temp <- MDM.IFN_kimma_pval$lme.contrast %>% 
+    filter(contrast_ref == "untreated" & contrast_lvl == c)
+   
+   vec.temp <- gsea.temp$estimate
+    names(vec.temp) <- gsea.temp$gene
+   
+   gsea.ls[[c]] <- vec.temp
+}
+```
+
+```{r}
+gsea_IFN_c5 <- BIGsea(gene_list = gsea.ls, 
+                      category = "C5", subcategory = "GO:BP",
+                      ID = "ENSEMBL")
+
+#filter terms 
+gsea_IFN_c5_signif <- gsea_IFN_c5 %>% 
+  inner_join(signif.enrich) %>% 
+  #Recalc FDR
+  group_by(group) %>% 
+  mutate(FDR = p.adjust(pval, "BH")) %>% 
+  ungroup()
+```
+
+```{r}
+gsea_format <- gsea_IFN_c5_signif  %>% 
+  mutate(signif.col = case_when(pval < 0.05 ~ "P < 0.05",
+                                pval < 0.1 ~ "P < 0.1",
+                                pval < 0.2 ~ "P < 0.2",
+                                pval < 0.3 ~ "P < 0.3",
+                                TRUE  ~ "NS")) %>% 
+  mutate(signif.col = fct_relevel(signif.col, "NS", after=Inf)) %>% 
+  filter(group != "IFNL1") %>% 
+  mutate(group = factor(group, levels = c("IFNg", "IFNe", "IFNb", "IFNA8"))) %>% 
+  mutate(pathway = gsub("GOBP_","",pathway),
+         pathway = gsub("_"," ",pathway),
+         pathway = tolower(pathway),
+         pathway = gsub("high density","high-density",pathway),
+         pathway = gsub("protein containing","protein-containing",pathway),
+         pathway = gsub("protein lipid","protein-lipid",pathway),
+         pathway = gsub("hippo","Hippo",pathway))
+
+plot.ls2 <- list()
+
+for(g in unique(sort(gsea_format$GO_group))){
+  plot.temp <- gsea_format %>% 
+    filter(GO_group ==g) %>% 
+    
+    ggplot() +
+    aes(x=group,y=NES, fill=signif.col) +
+    geom_segment(aes(group, xend = group, y = 0, yend = NES)) +
+    geom_point(shape=21, size=3, stroke=1) +
+    facet_grid(GO_group~pathway, scales = "free") +
+    coord_flip() +
+    scale_fill_manual(values = c("P < 0.05"="#D55E00","P < 0.1"="#E69F00",
+                                 "P < 0.2"="#F0E442", "P < 0.3"="lightblue",
+                                 "NS"="grey80"),
+                      drop = FALSE) +
+    theme_classic() +
+    lims(y=c(-1,2)) +
+    labs(fill="Significance", x="MDM stimulation",
+         y="Normalized enrichment score") +
+    theme(panel.border = element_rect(colour = "black", fill=NA)) +
+    geom_hline(yintercept = 0)
+  
+  if(g != "Hippo signaling") { plot.temp <- plot.temp + theme(legend.position = "none") }
+  
+  plot.ls2[[g]] <- plot.temp
+}
+
+gsea_plot <- wrap_plots(plot.ls2[c(1,2,4,3)]) +
+  plot_layout(widths=c(1,3))
+gsea_plot
+
+ggsave("MDM_IFN_GSEA.png", gsea_plot, width=13, height=4)
+```
+
+Check overlap of epigenetics genes in GSEA
+
+```{r}
+attach("../RNAseq/MDM-IFN_voom.RData")
+methyl.genes <- signif.enrich %>% 
+  unnest(methyl_genes) %>% 
+  pull(methyl_genes) %>% unique()
+
+gsea_IFN_c5_signif %>% 
+  select(group, pathway, leadingEdge) %>% 
+  unnest(leadingEdge) %>% 
+  left_join(dat.voom$genes, by=c("leadingEdge"="ensembl_gene_id")) %>% 
+  unnest(symbol) %>% 
+  # filter(symbol %in% methyl.genes) %>% 
+  View()
+```
+
+### Save
+
+```{r}
+save(gsea_IFN_c5_signif,
+     file="results/enrichment/MDM.IFN.gsea.RData")
+```
+
+# R session
+
+```{r}
+sessionInfo()
+```
+
+***
