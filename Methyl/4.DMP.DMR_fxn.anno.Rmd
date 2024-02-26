@@ -340,6 +340,31 @@ str.plot <- plot_string(map, enrichment = fake.enrichment, colors = col.vec2)
 str.plot
 ```
 
+# Transcription factors
+
+Lambert SA, Jolma A, Campitelli LF, Das PK, Yin Y, Albu M, Chen X, Taipale J, Hughes TR, Weirauch MT.(2018) The Human Transcription Factors. Cell. 172(4):650-665. doi: 10.1016/j.cell.2018.01.029. <http://humantfs.ccbr.utoronto.ca/download.php>
+
+Are any DMR associated genes transcription factors?
+
+```{r}
+tx <- read_csv("data_Methyl_clean/DatabaseExtract_v_1.01.csv")
+DMR.long <- DMR %>% 
+  mutate(gene_to_use = str_split(DMR_genes, "/")) %>% 
+  unnest(gene_to_use) %>% 
+  distinct(DMR, gene_to_use) %>% 
+  drop_na(gene_to_use)
+
+tx %>% 
+  filter(`HGNC symbol` %in% gene.list[["DMR"]] &
+           `Is TF?` =="Yes") %>% 
+  dplyr::select(`HGNC symbol`, `Is TF?`:`Motif status`) %>% 
+  left_join(DMR.long, by=c("HGNC symbol"="gene_to_use")) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+
+
 # R session
 
 ```{r}
