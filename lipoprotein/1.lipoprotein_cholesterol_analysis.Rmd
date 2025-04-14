@@ -20,12 +20,13 @@ library(tidyverse)
 library(readxl)
 library(BIGpicture)
 library(ggrepel)
+library(patchwork)
 # Linear modeling
 library(kimma)
 #Print pretty tables to Rmd
 library(knitr)
 library(kableExtra)
-  options(knitr.kable.NA = '')
+options(knitr.kable.NA = '')
 ```
 
 Set seed
@@ -47,7 +48,7 @@ dat$targets <- read_csv("../data_refs/2021.09.08RSTR_Hawn_metadata.csv") %>%
   arrange(FULLIDNO)
 
 dat$E <- read_excel("data_raw/Study191_DMA_Efflux_ForKim211012.xlsx", 
-                  sheet="DMA.data") %>% 
+                    sheet="DMA.data") %>% 
   select(AssayID, SUB_ACCESSION_NO, tHDL:xlHDL.sz) %>% 
   full_join(read_excel("data_raw/Study191_DMA_Efflux_ForKim211012.xlsx", 
                        sheet="Efflux.data"), by = "AssayID") %>% 
@@ -68,6 +69,19 @@ dat$targets <- dat$targets %>%
 ```{r}
 #Check one measure per individual
 length(unique(dat$targets$FULLIDNO)) == ncol(dat$E)
+```
+
+## Kinship
+
+```{r echo=FALSE, message=FALSE}
+kin <- read_csv("../data_refs/kinship_Hawn_all.csv")
+overlap <- intersect(kin$rowname, dat$targets$FULLIDNO)
+
+kin <- kin %>% 
+  filter(rowname %in% overlap) %>% 
+  column_to_rownames() %>% 
+  select(all_of(overlap)) %>% 
+  as.matrix()
 ```
 
 ## Explore data
@@ -102,133 +116,426 @@ dat$E %>%
 ```
 
 # Linear modeling
-## Base model
+## CEC
 
 ```{r}
-model <- kmFit(dat, model="~Sample_Group", run.lm = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
-                  metrics=TRUE)
-summarise_kmFit(model$lm, p.cutoff=c(0.01,0.05,0.1))
-```
-
-## Co-variates
-### Kinship
-
-```{r echo=FALSE, message=FALSE}
-kin <- read_csv("../data_refs/kinship_Hawn_all.csv")
-overlap <- intersect(kin$rowname, dat$targets$FULLIDNO)
-
-kin <- kin %>% 
-  filter(rowname %in% overlap) %>% 
-  column_to_rownames() %>% 
-  select(all_of(overlap)) %>% 
-  as.matrix()
+dat.cec <- dat
+dat.cec$E <- as.data.frame(dat.cec$E) %>% 
+  rownames_to_column() %>% 
+  filter(rowname %in% c("J774.ind","J774.basal","J774.abca1",
+                        "ABCA1.ind","ABCA1.basal","ABCA1.spec")) %>% 
+  column_to_rownames()
 ```
 
 ```{r}
-model.kin <- kmFit(dat, kin, model="~Sample_Group+(1|FULLIDNO)", run.lmerel = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
-                  metrics=TRUE)
-
-summarise_kmFit(model.kin$lmerel, p.cutoff=c(0.01,0.05,0.1))
-
-plot_fit(model, model.kin, x="lm", y="lmerel", metrics = c("AIC","sigma")) + 
-  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf) 
+model.kin <- kmFit(dat.cec, kin, model="~Sample_Group+(1|FULLIDNO)", 
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics=TRUE)
 ```
 
-### Sex
+### Clinical covariates
+
+Sex 
 
 ```{r}
-model.kin.sex <- kmFit(dat, kin, model="~Sample_Group+M0_KCVSEX+(1|FULLIDNO)", 
-                       run.lmerel = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
-                  metrics=TRUE)
-
-summarise_kmFit(model.kin.sex$lmerel, p.cutoff=c(0.01,0.05,0.1))
-
-plot_fit(model.kin, model.kin.sex, x="lmerel", y="lmerel",
-         metrics = c("AIC","sigma")) + 
-  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf) 
+model.kin.sex <- kmFit(dat.cec, kin,
+                       model="~Sample_Group+M0_KCVSEX+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
 ```
 
-### Age
+Age
 
 ```{r}
-model.kin.age <- kmFit(dat, kin, model="~Sample_Group+KCHCA_AGE_YR_CURRENT+(1|FULLIDNO)", 
-                       run.lmerel = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
-                  metrics = TRUE)
-
-summarise_kmFit(model.kin.age$lmerel, p.cutoff=c(0.01,0.05,0.1))
-
-plot_fit(model.kin, model.kin.age, x="lmerel", y="lmerel",
-         metrics = c("AIC","sigma")) + 
-  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf)
+model.kin.age <- kmFit(dat.cec, kin,
+                       model="~Sample_Group+KCHCA_AGE_YR_CURRENT+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics = TRUE)
 ```
 
-### BMI
+BMI
 
 ```{r}
-model.kin.bmi <- kmFit(dat, kin, model="~Sample_Group+avgBMI+(1|FULLIDNO)", 
-                       run.lmerel = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
-                  metrics=TRUE)
-
-summarise_kmFit(model.kin.bmi$lmerel, p.cutoff=c(0.01,0.05,0.1))
-
-plot_fit(model.kin, model.kin.bmi, x="lmerel", y="lmerel",
-         metrics = c("AIC","sigma")) + 
-  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf)
+model.kin.bmi <- kmFit(dat.cec, kin,
+                       model="~Sample_Group+avgBMI+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
 ```
 
-## Full model
+Compare fits
 
 ```{r}
-model.all <- kmFit(dat, kin,
+plot_fit2(model.kin, model.kin.sex, x="lmerel", y="lmerel",
+          metrics = c("AIC"))[[1]] +
+  labs(title = "+/- sex") +
+  plot_fit2(model.kin, model.kin.age, x="lmerel", y="lmerel",
+            metrics = c("AIC"))[[1]] +
+  labs(title = "+/- age") +
+  plot_fit2(model.kin, model.kin.bmi, x="lmerel", y="lmerel",
+            metrics = c("AIC"))[[1]] +
+  labs(title = "+/- BMI")
+```
+
+BMI improves model fit for all CEC measures while age and sex tend to slightly worsen model fit, though not to a significant degree (\delta AIC < ).
+
+### Full model
+
+`~ RSTR + BMI + age + sex + kinship`
+
+```{r}
+model.all <- kmFit(dat.cec, kin,
                    model="~Sample_Group+avgBMI+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+(1|FULLIDNO)",
-                   run.lmerel = TRUE, 
-                  patientID = "FULLIDNO", libraryID = "FULLIDNO",
-                  metrics = TRUE)
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics = TRUE)
 
 summarise_kmFit(model.all$lmerel, p.cutoff=c(0.01,0.05,0.1))
 
-plot_fit(model.kin, model.all, x="lmerel", y="lmerel",
-         metrics = c("AIC","sigma")) + 
-  geom_text_repel(aes(label=gene), min.segment.length = unit(0, 'lines'), 
-                  show.legend = FALSE, max.overlaps = Inf)
+plot_fit2(model.kin, model.all, x="lmerel", y="lmerel",
+          metrics = c("AIC")) 
+```
+
+## HDL concentrations and sizes
+
+```{r}
+dat.con <- dat
+
+dat.con$E <- as.data.frame(dat.con$E) %>% 
+  rownames_to_column() %>% 
+  filter(rowname %in% c("xsHDL","sHDL","mHDL","mlHDL",
+                        "lHDL","xlHDL","tHDL")) %>% 
+  column_to_rownames()
+
+dat.sz <- dat
+
+dat.sz$E <- as.data.frame(dat.sz$E) %>% 
+  rownames_to_column() %>% 
+  filter(rowname %in% c("xsHDL.sz","sHDL.sz","mHDL.sz","mlHDL.sz",
+                        "lHDL.sz","xlHDL.sz")) %>% 
+  column_to_rownames()
+```
+
+```{r}
+model.kin2a <- kmFit(dat.con, kin, model="~Sample_Group+(1|FULLIDNO)", 
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics=TRUE)
+model.kin2b <- kmFit(dat.sz, kin, model="~Sample_Group+(1|FULLIDNO)", 
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics=TRUE)
+```
+
+### Clinical covariates
+
+Sex 
+
+```{r}
+model.kin.sex2a <- kmFit(dat.con, kin,
+                       model="~Sample_Group+M0_KCVSEX+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
+model.kin.sex2b <- kmFit(dat.sz, kin,
+                       model="~Sample_Group+M0_KCVSEX+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
+```
+
+Age
+
+```{r}
+model.kin.age2a <- kmFit(dat.con, kin,
+                       model="~Sample_Group+KCHCA_AGE_YR_CURRENT+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics = TRUE)
+model.kin.age2b <- kmFit(dat.sz, kin,
+                       model="~Sample_Group+KCHCA_AGE_YR_CURRENT+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics = TRUE)
+```
+
+BMI
+
+```{r}
+model.kin.bmi2a <- kmFit(dat.con, kin,
+                       model="~Sample_Group+avgBMI+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
+model.kin.bmi2b <- kmFit(dat.sz, kin,
+                       model="~Sample_Group+avgBMI+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
+```
+
+Compare fits for HDL concentrations
+
+```{r}
+plot_fit2(model.kin2a, model.kin.sex2a, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- sex") +
+  plot_fit2(model.kin2a, model.kin.age2a, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- age") +
+  plot_fit2(model.kin2a, model.kin.bmi2a, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- BMI")
+```
+
+Compare fits for HDL sizes
+
+```{r}
+plot_fit2(model.kin2b, model.kin.sex2b, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- sex") +
+  plot_fit2(model.kin2b, model.kin.age2b, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- age") +
+  plot_fit2(model.kin2b, model.kin.bmi2b, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- BMI")
+```
+
+### Full model
+
+`HDL concentration ~ RSTR + BMI + age + sex + kinship`
+
+```{r}
+model.all2a <- kmFit(dat.con, kin,
+                   model="~Sample_Group+avgBMI+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+(1|FULLIDNO)",
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics = TRUE)
+
+summarise_kmFit(model.all2a$lmerel, fdr.cutoff=c(0.01,0.05,0.1))
+
+plot_fit2(model.kin2a, model.all2a, x="lmerel", y="lmerel",
+          metrics = c("AIC")) 
+```
+
+`HDL size ~ RSTR + BMI + age + sex + kinship`
+
+```{r}
+model.all2b <- kmFit(dat.sz, kin,
+                   model="~Sample_Group+avgBMI+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+(1|FULLIDNO)",
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics = TRUE)
+
+summarise_kmFit(model.all2b$lmerel, p.cutoff=c(0.01,0.05,0.1))
+
+plot_fit2(model.kin2b, model.all2b, x="lmerel", y="lmerel",
+          metrics = c("AIC")) 
+```
+
+## HDL proportions
+
+Calculate HDL measures as a percentage of total.
+
+```{r}
+dat.conp <- dat.con
+
+dat.conp$E <- as.data.frame(dat.conp$E) %>% 
+  t() %>% as.data.frame() %>% 
+  mutate(across(xsHDL:xlHDL, ~./tHDL, .names = "{.col}_pct")) %>% 
+  select(contains("_pct")) %>% 
+  t()
+```
+
+```{r}
+model.kin3 <- kmFit(dat.conp, kin, model="~Sample_Group+(1|FULLIDNO)", 
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics=TRUE)
+```
+
+### Clinical covariates
+
+Sex 
+
+```{r}
+model.kin.sex3 <- kmFit(dat.conp, kin,
+                       model="~Sample_Group+M0_KCVSEX+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
+```
+
+Age
+
+```{r}
+model.kin.age3 <- kmFit(dat.conp, kin,
+                       model="~Sample_Group+KCHCA_AGE_YR_CURRENT+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics = TRUE)
+```
+
+BMI
+
+```{r}
+model.kin.bmi3 <- kmFit(dat.conp, kin,
+                       model="~Sample_Group+avgBMI+(1|FULLIDNO)", 
+                       run_lmerel = TRUE, 
+                       patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                       metrics=TRUE)
+```
+
+Compare fits for HDL proportions
+
+```{r}
+plot_fit2(model.kin3, model.kin.sex3, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- sex") +
+  plot_fit2(model.kin3, model.kin.age3, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- age") +
+  plot_fit2(model.kin3, model.kin.bmi3, x="lmerel", y="lmerel",
+                metrics = c("AIC"))[[1]] +
+  labs(title = "+/- BMI")
+```
+
+### Full model
+
+`HDL proportion ~ RSTR + BMI + age + sex + kinship`
+
+```{r}
+model.all3 <- kmFit(dat.conp, kin,
+                   model="~Sample_Group+avgBMI+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+(1|FULLIDNO)",
+                   run_lmerel = TRUE, 
+                   patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                   metrics = TRUE)
+
+summarise_kmFit(model.all3$lmerel, fdr.cutoff=c(0.01,0.05,0.1))
+
+plot_fit2(model.kin3, model.all3, x="lmerel", y="lmerel",
+          metrics = c("AIC")) 
+```
+
+## CEC ~ HDL
+
+Compare HDL concentrations and proportions to CEC.
+
+```{r}
+dat2 <- dat
+dat2$E <- as.data.frame(dat2$E) %>% 
+  rownames_to_column() %>% 
+  filter(rowname %in% c("J774.ind","ABCA1.spec")) %>% 
+  column_to_rownames()
+
+#Move HDL to x variables
+dat2$targets <- dat2$targets %>% 
+  #concentrations and sizes
+  full_join(as.data.frame(t(dat.con$E)) %>% 
+              rownames_to_column("FULLIDNO"),
+            by="FULLIDNO") %>% 
+  #sizes
+  # full_join(as.data.frame(t(dat.sz$E)) %>% 
+  #             rownames_to_column("FULLIDNO"),
+  #           by="FULLIDNO") %>% 
+  #proportions
+  full_join(as.data.frame(t(dat.conp$E)) %>% 
+              rownames_to_column("FULLIDNO"),
+            by="FULLIDNO")
+```
+
+### Full model
+
+`~ HDL measure + BMI + age + sex + kinship`
+
+*Note*: The interaction of RSTR:HDL was not significant for any model (FDR > 0.5).
+
+```{r message=FALSE}
+model.cec.hdl <- data.frame()
+
+for(x in colnames(dat2$targets[7:ncol(dat2$targets)])){
+  print(x)
+  m.temp <- paste0("~",x,
+                   "+avgBMI+KCHCA_AGE_YR_CURRENT+M0_KCVSEX+(1|FULLIDNO)")
+  
+  model.temp <- kmFit(dat2, kin, 
+                      model=m.temp, 
+                      run_lmerel = TRUE, 
+                      patientID = "FULLIDNO", libraryID = "FULLIDNO",
+                      metrics=FALSE)
+  model.cec.hdl <- model.temp$lmerel %>% 
+    mutate(model = x) %>% 
+    bind_rows(model.cec.hdl)
+}
+
+#Recalc FDR for multiple x tests
+model.cec.hdl.fdr <- model.cec.hdl %>% 
+  mutate(model_group = case_when(grepl("_pct$",model)~"pct",
+                                 grepl(".sz$",model)~"sz",
+                                 TRUE~"HDL")) %>% 
+  mutate(variable_group = case_when(
+    # grepl(":",variable)~"Sample_Group:HDL",
+    grepl("_pct$",variable)~"pct",
+    grepl(".sz$",variable)~"sz",
+    variable %in% c("avgBMI","KCHCA_AGE_YR_CURRENT",
+                    "M0_KCVSEX","(1 | FULLIDNO)","Sample_Group")~variable,
+    TRUE~"HDL")) %>% 
+  group_by(gene,model_group,variable_group) %>% 
+  mutate(FDR=p.adjust(pval, method="BH")) %>% 
+  ungroup()
+
+# count(model.cec.hdl.fdr,gene,model_group,variable_group) %>% View
+```
+
+```{r}
+summarise_kmFit(model.cec.hdl.fdr, p.cutoff=c(0.01,0.05,0.1))
 ```
 
 # Significant results
 
-Recalculate FDR within groups.
+Combine results and save.
 
-```{r}
+```{r message=FALSE}
 fdr <- model.all$lmerel %>% 
-  mutate(group = ifelse(grepl("HDL.sz", gene), "HDL.sz",
-                        ifelse(grepl("HDL", gene), "HDL",
-                               "other"))) %>% 
-  group_by(group, variable) %>% 
-  mutate(FDR.new = p.adjust(pval, method = "BH")) %>% 
-  ungroup()
+  mutate(group="CEC") %>% 
+  bind_rows(model.all2a$lmerel %>% 
+              mutate(group="HDL")) %>% 
+  bind_rows(model.all2b$lmerel %>% 
+              mutate(group="HDL.sz")) %>% 
+  bind_rows(model.all3$lmerel %>% 
+              mutate(group="HDL.pct"))
 
 write_csv(fdr, file="results/lipoprot_efflux_model_results.csv")
 
-dat2 <- dat$E %>% 
+write_csv(model.cec.hdl.fdr,
+          file="results/lipoprot_efflux-HDL_model_results.csv")
+```
+
+### CEC
+
+```{r}
+dat3 <- dat$E %>% 
   t() %>% as.data.frame() %>% 
   rownames_to_column("FULLIDNO") %>% 
   filter(FULLIDNO %in% rownames(kin)) %>% 
   pivot_longer(-FULLIDNO, names_to = "gene") %>% 
+  bind_rows(dat.conp$E %>% 
+              t() %>% as.data.frame() %>% 
+              rownames_to_column("FULLIDNO") %>% 
+              filter(FULLIDNO %in% rownames(kin)) %>% 
+              pivot_longer(-FULLIDNO, names_to = "gene")) %>% 
   left_join(dat$targets, by = "FULLIDNO") %>% 
-  left_join(fdr, by = "gene") 
+  left_join(fdr, by = "gene") %>% 
+  filter(!gene %in% c("ssHDL","msuHDL"))
 
-dat2 %>% 
-  filter(variable == "Sample_Group" & pval < 0.1) %>% 
+dat3 %>% 
+  filter(variable == "Sample_Group" & pval < 0.2 & group == "CEC") %>% 
   mutate(facet.lab = paste0(gene, "\nP = ", round(pval, digits=3), "\n",
-                            "FDR = ", round(FDR.new, digits=3))) %>% 
+                            "FDR = ", round(FDR, digits=3))) %>% 
   mutate(age_group = cut(KCHCA_AGE_YR_CURRENT, seq(10, 70, 20))) %>% 
   
   ggplot(aes(x=Sample_Group, y=value)) +
@@ -239,10 +546,62 @@ dat2 %>%
   labs(x="",y="",color="Age (yrs)")
 ```
 
+### HDL concentration, proportion, size
+
+No significant results.
+
+```{r}
+dat3 %>% 
+  filter(variable == "Sample_Group" & FDR < 0.2 & 
+           group %in% c("HDL","HDL.sz","HDL.pct"))
+```
+
+### CEC ~ HDL
+
+```{r}
+# model.cec.hdl.fdr %>%
+#   filter(variable_group %in% c("pct","HDL","sz","Sample_Group:HDL") & FDR < 0.2)
+
+dat4 <- dat$E %>% 
+  t() %>% as.data.frame() %>% 
+  rownames_to_column("FULLIDNO") %>% 
+  filter(FULLIDNO %in% rownames(kin)) %>% 
+  select(FULLIDNO:xlHDL.sz) %>% 
+  full_join(dat.conp$E %>% 
+              t() %>% as.data.frame() %>% 
+              rownames_to_column("FULLIDNO") %>% 
+              filter(FULLIDNO %in% rownames(kin))) %>% 
+  pivot_longer(-FULLIDNO, names_to = "model", values_to = "x") %>% 
+  left_join(dat$E %>% 
+              t() %>% as.data.frame() %>% 
+              rownames_to_column("FULLIDNO") %>% 
+              filter(FULLIDNO %in% rownames(kin)) %>% 
+              select(FULLIDNO, J774.ind, ABCA1.spec)) %>% 
+  pivot_longer(J774.ind:ABCA1.spec, names_to = "gene", values_to = "y") %>%
+  inner_join(model.cec.hdl.fdr %>% 
+             filter(variable_group %in% c("pct","HDL"))) %>% 
+  filter(FDR < 0.2) %>% 
+  left_join(dat$targets %>% select(FULLIDNO,Sample_Group))
+
+p1 <- dat4 %>% 
+  mutate(facet.lab = paste0(gene, "\nP = ", round(pval, digits=3), "\n",
+                            "FDR = ", round(FDR, digits=3))) %>% 
+
+  ggplot(aes(x=x, y=y)) +
+  geom_point(aes(color=Sample_Group)) +
+  geom_smooth(se=FALSE, method="lm", formula="y~x") +
+  theme_classic() +
+  facet_wrap(model~facet.lab, scales = "free") +
+  labs(x="",y="J774 CEC (%)",color="")
+
+p1
+ggsave("CEC_HDL.png",p1,width=6, height=3)
+```
+
 # Check age
 
 ```{r}
-dat2 %>% 
+dat3 %>% 
   distinct(FULLIDNO, Sample_Group, KCHCA_AGE_YR_CURRENT) %>% 
   ggplot(aes(x=Sample_Group, y=KCHCA_AGE_YR_CURRENT)) +
   geom_boxplot(outlier.shape = NA) +
@@ -250,7 +609,7 @@ dat2 %>%
   theme_classic() +
   labs(x="")
 
-dat2 %>% 
+dat3 %>% 
   distinct(FULLIDNO, Sample_Group, KCHCA_AGE_YR_CURRENT) %>% 
   t.test(KCHCA_AGE_YR_CURRENT~Sample_Group, data=.)
 ```
