@@ -78,3 +78,5 @@ ggsave("publication/Fig1.RSTR.LTBI.Manhattan.pdf", man.plot,
        height=4, width=7.1)
 ggsave("publication/Fig1.RSTR.LTBI.Manhattan.png", man.plot,
        height=4, width=7.1)
+ggsave("publication/Fig1.RSTR.LTBI.Manhattan.eps", man.plot,
+       height=4, width=7.1)

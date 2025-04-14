@@ -38,10 +38,10 @@ dat.signif <- read_csv("lipoprotein/results/lipoprot_efflux_model_results.csv") 
   filter(variable == "Sample_Group") %>% 
   right_join(dat.kin) %>% 
   rowwise() %>% 
-  mutate(facet_lab = paste0(facet_lab,"\nP = ",round(pval,digits=2)),
-         facet_lab = factor(facet_lab,
-                            levels=c("Total CEC\nP = 0.39",
-                                     "ABCA1 CEC\nP = 0.02")))
+  mutate(facet_lab = paste0(facet_lab,"\nB = ",round(estimate,digits=2),
+                            ", P = ",round(pval,digits=2)))
+    
+
 
 ### Efflux summary ####
 # dat.signif %>% 
@@ -120,7 +120,7 @@ plot4 <- as.data.frame(dat.combined.voom$E) %>%
 
 #### Save ####
 lo <- "
-ABCCC
+ABCC
 "
 plot_all <- plot1 + plot3 +plot4 + 
   plot_annotation(tag_levels = "A") +
@@ -129,6 +129,8 @@ plot_all <- plot1 + plot3 +plot4 +
 # plot_all
 
 ggsave(plot_all, file="publication/Fig5.efflux.png",
-       width=6.1, height=3)
+       width=6.6, height=3)
 ggsave(plot_all, file="publication/Fig5.efflux.pdf",
-       width=6.1, height=3)
+       width=6.6, height=3)
+ggsave(plot_all, file="publication/Fig5.efflux.eps",
+       width=6.6, height=3)

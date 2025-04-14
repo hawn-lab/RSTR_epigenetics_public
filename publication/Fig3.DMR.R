@@ -287,6 +287,7 @@ p_all <- plot.ls[[1]] + plot.ls[[2]] + plot.ls[[3]] +
 
 ggsave(p_all, filename = "publication/Fig3.DMR.png", width=10, height=10)
 ggsave(p_all, filename = "publication/Fig3.DMR.pdf", width=10, height=10)
+ggsave(p_all, filename = "publication/Fig3.DMR.eps", width=10, height=10)
 
 
 #### Check DMP in DMR ####

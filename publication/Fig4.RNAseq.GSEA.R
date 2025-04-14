@@ -90,7 +90,6 @@ gsea_format_hgnc <- gsea_format %>%
   arrange(pathway)
 
 gsea_format2_hgnc <- gsea_format2 %>% 
-  filter(pathway %in% gsea.signif2) %>% 
   unnest(leadingEdge) %>% 
   mutate(group = recode(group,
                         "IFNG"="IFN other",
@@ -106,7 +105,6 @@ gsea_format2_hgnc <- gsea_format2 %>%
   arrange(pathway)
 
 gsea_format3_hgnc <- gsea_format2 %>% 
-  filter(pathway %in% gsea.signif2) %>% 
   unnest(leadingEdge) %>% 
   mutate(group = recode(group,
                         "IFNA8"="IFN other",

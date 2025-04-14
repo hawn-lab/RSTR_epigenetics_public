@@ -145,6 +145,11 @@ blank.colnames <- c(" ","  ","   ","    ","     ")
 #### DMR annotation and FC ####
 DMR <- read_csv("Methyl/results/RSTR.DMR.results.csv")
 
+minFDR <- read_csv("Methyl/results/RSTR.DMR.results.cpgs.csv.gz") %>% 
+  group_by(DMR) %>% 
+  summarise(minProbe = round(min(probe_FDR), digits=2)) %>% 
+  ungroup()
+
 DMR.OI <- read_csv("Methyl/results/RSTR.DMR.results.cpgs.csv.gz") %>% 
   #Filter DMR assoc with signif genes
   mutate(DMR_genes = str_split(DMR_genes, "/")) %>% 
@@ -153,8 +158,8 @@ DMR.OI <- read_csv("Methyl/results/RSTR.DMR.results.cpgs.csv.gz") %>%
   filter(annotation.group != "IGR") %>% 
   #Fold change direction for probes in region
   mutate(FC = RSTR.M.ave-LTBI.M.ave,
-         FC.group = case_when(FC>0 ~ "+",
-                              FC<0 ~ "-")) %>% 
+         FC.group = case_when(FC>0 ~ "RSTR",
+                              FC<0 ~ "LTBI")) %>% 
   #Collapse per DMR
   group_by(DMR, DMR_genes, no.cpgs) %>% 
   arrange(desc(FC.group),desc(annotation.group)) %>% 
@@ -169,27 +174,42 @@ DMR.OI <- read_csv("Methyl/results/RSTR.DMR.results.cpgs.csv.gz") %>%
                                    "5'UTR/TSS1500"="TSS1500/5'UTR")) %>% 
   #add ave DMR info
   left_join(distinct(DMR, DMR, meandiff)) %>% 
-  mutate(meandiff = case_when(meandiff>0 ~ "(+)",
-                              meandiff<0 ~ "(-)")) %>% 
+  mutate(meandiff = case_when(meandiff>0 ~ "RSTR",
+                              meandiff<0 ~ "LTBI")) %>% 
   rowwise() %>% 
-  mutate(FC.groups = ifelse(FC.groups == "-/+",paste(FC.groups,meandiff),
-                            FC.groups)) %>% 
+  # mutate(FC.groups = ifelse(FC.groups == "RSTR/LTBI",paste(FC.groups,meandiff),
+  #                           FC.groups)) %>% 
   # full_join(E) %>% 
   #Make pretty
-  dplyr::select(DMR_genes, annotation.group, DMR,  no.cpgs,  FC.groups #, MEDIA, TB
-  ) %>% 
+  dplyr::select(DMR_genes, annotation.group, DMR,  no.cpgs,  
+                FC.groups, meandiff) %>% 
   mutate(annotation.group = gsub("body","intron",annotation.group)) %>% 
+  #Add min probe FDR
+  left_join(minFDR) %>% 
   mutate(DMR = gsub("_"," ",DMR)) %>% 
   arrange(FC.groups, DMR_genes) %>% 
   dplyr::rename(Gene=DMR_genes, Annotation=annotation.group,
-                "Total probes"=no.cpgs, "Log2 M fold change RSTR - LTBI"=FC.groups) %>% 
-  drop_na(Gene)
+                "Total probes"=no.cpgs) %>% 
+  drop_na(Gene) %>% 
+  select(Gene:`Total probes`, minProbe, everything()) %>% 
+  dplyr::rename("Minimum probe FDR"="minProbe",
+         "Probe higher methylation"="FC.groups",
+         "Mean DMR higher methylation"="meandiff") %>% 
+  mutate(`Probe higher methylation`=
+           factor(`Probe higher methylation`,
+                  levels=c("RSTR","LTBI","RSTR/LTBI")))
+  
 # DMR.OI
 
 #### Render in dt ####
 
 dt_all <- inner_join(enrich.hm, DMR.OI) %>% 
-  arrange(`Log2 M fold change RSTR - LTBI`, Gene) %>% 
+  dplyr::rename(
+    "Higher methylation (per probe)"="Probe higher methylation",
+    "Higher methylation (mean)"="Mean DMR higher methylation") %>% 
+  arrange(`Higher methylation (per probe)`,
+          Gene) %>% 
+    
   gt() %>% 
   #Color boxes
   data_color(
@@ -199,21 +219,16 @@ dt_all <- inner_join(enrich.hm, DMR.OI) %>%
       domain = c("",blank.colnames)),
     apply_to = "fill",
     autocolor_text = FALSE) %>% 
-  #Color text for + / - fold change
-  data_color(
-    columns = `Log2 M fold change RSTR - LTBI`,
-    colors = scales::col_factor(
-      palette = c("blue","red","blue","red"),
-      domain = c("-","+","+/- (-)","+/- (+)")),
-    apply_to = "text",
-    autocolor_text = FALSE) %>% 
   #Column width
   cols_width(FA:Other ~ px(50)) %>% 
-  cols_width(`Log2 M fold change RSTR - LTBI` ~ px(160)) %>% 
+  cols_width(`Higher methylation (mean)` ~ px(90),
+             `Higher methylation (per probe)` ~ px(90),
+             `Total probes` ~ px(90),
+             `Minimum probe FDR` ~ px(90)) %>% 
   #Text align
   cols_align(align = "left",columns = Gene:DMR) %>% 
   cols_align(align = "center",
-             columns = `Total probes`:`Log2 M fold change RSTR - LTBI`) %>% 
+             columns = `Total probes`:`Higher methylation (mean)`) %>% 
   #row breaks
   tab_options(column_labels.border.top.color = "black",
               column_labels.border.bottom.color = "black",
@@ -235,12 +250,5 @@ dt_all <- inner_join(enrich.hm, DMR.OI) %>%
 gtsave(dt_all, "publication/Fig2B.DMR.png")
 
 DMR.OI %>% 
-  separate(`Log2 M fold change RSTR - LTBI`, 
-           into=c("Probe log2 M fold change RSTR - LTBI",
-                  "Mean DMR log2 M fold change RSTR - LTBI"), sep=" ") %>% 
-  mutate(`Mean DMR log2 M fold change RSTR - LTBI` = ifelse(
-    is.na(`Mean DMR log2 M fold change RSTR - LTBI`), 
-    paste0("(",`Probe log2 M fold change RSTR - LTBI`,")"),
-    `Mean DMR log2 M fold change RSTR - LTBI`)) %>% 
   arrange(Gene) %>% 
   write_csv(file = "publication/TableS3.DMR.direction.csv")
